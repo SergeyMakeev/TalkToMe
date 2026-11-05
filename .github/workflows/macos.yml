@@ -19,7 +19,18 @@ jobs:
           build/mac/TalkToMe.app/Contents/MacOS/TalkToMe --self-test
           python3 Checks/mac_server.py build/mac/TalkToMe.app/Contents/MacOS/TalkToMe
       - name: Open the result window and first-run Settings
-        run: build/mac/TalkToMe.app/Contents/MacOS/TalkToMe --check-window
+        timeout-minutes: 2
+        run: |
+          build/mac/TalkToMe.app/Contents/MacOS/TalkToMe --check-window &
+          app_pid=$!
+          for i in {1..30}; do
+            if ! kill -0 "$app_pid" 2>/dev/null; then wait "$app_pid"; exit $?; fi
+            sleep 1
+          done
+          sample "$app_pid" 1 -file "$RUNNER_TEMP/TalkToMe-sample.txt"
+          head -160 "$RUNNER_TEMP/TalkToMe-sample.txt"
+          kill "$app_pid"
+          exit 1
       - name: Transcribe a sample on the CPU
         run: |
           curl --fail --location --retry 3 -o "$RUNNER_TEMP/tiny.en.bin" https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-tiny.en.bin

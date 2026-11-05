@@ -78,7 +78,10 @@ final class Capture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
     private var invalidFormat = false
     private var observer: NSObjectProtocol?
     private var limit = 0
-    static var devices: [AVCaptureDevice] { AVCaptureDevice.devices(for: .audio) }
+    static var devices: [AVCaptureDevice] {
+        guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else { return [] }
+        return AVCaptureDevice.devices(for: .audio)
+    }
     func start(deviceID: String, minutes: Int, interrupted: @escaping () -> Void) throws {
         guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else {
             throw Failure("Allow microphone access in TalkToMe Settings, then try again.")

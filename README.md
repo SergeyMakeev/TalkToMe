@@ -70,7 +70,7 @@ Mac preferences and downloaded models live under `~/Library/Application Support/
 
 Speech activity detection filters silence before source-language transcription. Both clients send the transcript as data, request `enable_thinking: false`, and reject truncated, empty, or reasoning-bearing completions. The recognizer stays loaded between utterances. [Default editing prompt](Shared/EnglishPrompt.txt) · [Qwen model card](https://huggingface.co/Qwen/Qwen3.6-35B-A3B)
 
-Recording begins with the hotkey. The latest audio, source, English, and timings live in memory. Starting a new recording replaces the previous result. The app writes settings only. Explicitly copying a result places it on the normal Windows clipboard. A separately managed server controls its own logging.
+Recording begins with the hotkey. The latest recording, transcript and English result live in memory. Starting a new recording replaces the previous result. Preferences and downloaded models persist between launches. Explicitly copying a result places it on the system clipboard. A separately managed server controls its own logging.
 
 ## Insertion and recovery
 

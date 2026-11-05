@@ -41,7 +41,8 @@ import AVFoundation
                     exit(1)
                 }
                 print("Result window, Settings sheet and menu-bar icon appeared.")
-                NSApp.terminate(nil)
+                self.controller.quit()
+                exit(0)
             }
         }
     }
