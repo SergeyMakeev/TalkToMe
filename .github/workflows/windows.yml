@@ -2,8 +2,14 @@ name: Windows build
 
 on:
   push:
+    branches: ['**']
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -12,6 +18,8 @@ jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 15
+    env:
+      APP_VERSION: ${{ inputs.version || '1.0.0' }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-dotnet@v5
@@ -22,15 +30,34 @@ jobs:
           python-version: '3.11'
 
       - name: Build desktop app and checks
-        run: dotnet build Checks/TalkToMe.Checks.csproj --configuration Release
+        run: dotnet build Checks/TalkToMe.Checks.csproj --configuration Release "-p:Version=$env:APP_VERSION"
       - name: Run noninteractive checks
         run: dotnet run --project Checks/TalkToMe.Checks.csproj --configuration Release --no-build
       - name: Check Python worker syntax
         run: python -m py_compile asr/worker.py
       - name: Publish desktop app
+        if: ${{ !inputs.version }}
         run: dotnet publish Desktop/TalkToMe.csproj --configuration Release --no-build --output build/app
       - uses: actions/upload-artifact@v6
+        if: ${{ !inputs.version }}
         with:
           name: TalkToMe-Windows
           path: build/app/
+          if-no-files-found: error
+      - name: Package Windows x64 release
+        if: inputs.version
+        shell: pwsh
+        run: |
+          $package = 'build/windows-release'
+          dotnet publish Desktop/TalkToMe.csproj -c Release -r win-x64 --self-contained true "-p:Version=$env:APP_VERSION" -o "$package/build/app"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Path "$package/asr"
+          Copy-Item -LiteralPath asr/worker.py -Destination "$package/asr"
+          Copy-Item -LiteralPath TalkToMe.cmd, setup.ps1, requirements.txt, settings.example.json, README.md, LICENSE -Destination $package
+          tar.exe -a -cf build/TalkToMe-Windows-x64.zip -C $package .
+      - uses: actions/upload-artifact@v6
+        if: inputs.version
+        with:
+          name: TalkToMe-Windows-x64
+          path: build/TalkToMe-Windows-x64.zip
           if-no-files-found: error

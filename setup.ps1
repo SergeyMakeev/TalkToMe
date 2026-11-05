@@ -49,10 +49,14 @@ try {
         & $hf download dropbox-dash/faster-whisper-large-v3-turbo @files --revision 0a363e9161cbc7ed1431c9597a8ceaf0c4f78fcf --local-dir $modelDir
         if ($LASTEXITCODE -ne 0) { throw 'Downloading the local Whisper model failed.' }
     }
-    dotnet restore Desktop/TalkToMe.csproj --packages "$PSScriptRoot/.cache/nuget"
-    if ($LASTEXITCODE -ne 0) { throw 'Restore failed. Install the .NET 8 SDK and check NuGet access.' }
-    dotnet publish Desktop/TalkToMe.csproj --no-restore -c Release -o build/app
-    if ($LASTEXITCODE -ne 0) { throw 'Publishing the desktop app failed.' }
+    if (Test-Path -LiteralPath 'Desktop/TalkToMe.csproj') {
+        dotnet restore Desktop/TalkToMe.csproj --packages "$PSScriptRoot/.cache/nuget"
+        if ($LASTEXITCODE -ne 0) { throw 'Restore failed. Install the .NET 8 SDK and check NuGet access.' }
+        dotnet publish Desktop/TalkToMe.csproj --no-restore -c Release -o build/app
+        if ($LASTEXITCODE -ne 0) { throw 'Publishing the desktop app failed.' }
+    } elseif (-not (Test-Path -LiteralPath 'build/app/TalkToMe.exe')) {
+        throw 'TalkToMe.exe is missing. Extract the complete Windows release archive and run setup again.'
+    }
     $config | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -LiteralPath $settingsFile
     Write-Host 'Ready. Open TalkToMe.cmd, then focus a text field.'
 } finally {

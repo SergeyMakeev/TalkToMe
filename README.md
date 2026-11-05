@@ -2,9 +2,11 @@
 
 Dictate in Russian, English, or both and insert written English at the cursor on macOS or Windows. Whisper transcribes microphone audio on your computer. Qwen translates and edits the transcript through a local or remote llama.cpp `llama-server`.
 
+Download a versioned build from [GitHub Releases](https://github.com/SergeyMakeev/TalkToMe/releases). Maintainers can publish from the GitHub UI or by pushing a version tag. [How to publish a release](.github/workflows/README.md)
+
 ## Install on macOS
 
-1. Open a successful **macOS build** run and download **TalkToMe-macOS-ARM64** for Apple silicon or **TalkToMe-macOS-X64** for Intel. Extract the archive and the zip inside it, then move **TalkToMe.app** to Applications. The app requires macOS 13 or later. CI uses an ad-hoc signature. If Gatekeeper asks for approval, review the app in **System Settings → Privacy & Security**. [Mac builds](https://github.com/SergeyMakeev/TalkToMe/actions/workflows/macos.yml) · [Apple’s guide to opening downloaded apps](https://support.apple.com/en-us/102445)
+1. Download **TalkToMe-macOS-arm64.zip** for Apple silicon or **TalkToMe-macOS-x86_64.zip** for Intel from GitHub Releases. Extract the zip and move **TalkToMe.app** to Applications. You can also download a CI build from a successful Actions run and extract the zip inside its artifact. The app requires macOS 13 or later. CI uses an ad-hoc signature. If Gatekeeper asks for approval, review the app in **System Settings → Privacy & Security**. [Mac builds](https://github.com/SergeyMakeev/TalkToMe/actions/workflows/macos.yml) · [Apple’s guide to opening downloaded apps](https://support.apple.com/en-us/102445)
 2. Launch TalkToMe. In **Settings → Dictation**, grant **Microphone** access for recording and **Accessibility** access for insertion into other apps. Select a microphone or follow the system default.
 3. In **Speech**, click **Download recommended models** to install Whisper large-v3-turbo and the speech detector. You can also choose existing whisper.cpp GGML files. Metal acceleration is enabled by default on Apple silicon. Intel defaults to CPU.
 4. In **Server**, enter your llama-server URL including `/v1`, the model alias and an optional API key. To run Qwen on this Mac, enable **Start a local llama-server** and choose your installed executable and GGUF. Click **Save**.
@@ -31,9 +33,11 @@ The panel offers **Auto**, **Russian**, and **English** input and a **Press to t
 
 ## Install on Windows
 
-Use an x64 installation of Python 3.11 with the Windows `py` launcher, the .NET 8 SDK with Windows Desktop support, and a microphone enabled for desktop apps. The CUDA configuration uses cuBLAS for CUDA 12 and cuDNN 9. Their DLL directories must be on PATH or supplied with `-CudaLibraryDirectory`. For CPU transcription, add `-Cpu` to setup. [faster-whisper runtime requirements](https://github.com/SYSTRAN/faster-whisper#requirements)
+Extract **TalkToMe-Windows-x64.zip** from GitHub Releases. The release includes the app and its .NET runtime. For a source checkout, install the .NET 8 SDK with Windows Desktop support.
 
-Run these commands in PowerShell in the repository. Setup creates a project-local Python environment, downloads the pinned Whisper large-v3-turbo CTranslate2 model, publishes the desktop executable under `build/app`, and writes personal preferences to `settings.json`. Setup can be rerun. The launcher works offline after provisioning when the configured server is reachable. [Whisper model](https://huggingface.co/dropbox-dash/faster-whisper-large-v3-turbo)
+Both installations use x64 Python 3.11 with the Windows `py` launcher and a microphone enabled for desktop apps. The CUDA configuration uses cuBLAS for CUDA 12 and cuDNN 9. Their DLL directories must be on PATH or supplied with `-CudaLibraryDirectory`. For CPU transcription, add `-Cpu` to setup. [faster-whisper runtime requirements](https://github.com/SYSTRAN/faster-whisper#requirements)
+
+Run the commands below in PowerShell in the extracted release folder or repository. Setup creates a local Python environment, downloads the pinned Whisper model, and writes personal preferences to `settings.json`. A source checkout also builds the desktop executable. Setup can be rerun. [Whisper model](https://huggingface.co/dropbox-dash/faster-whisper-large-v3-turbo)
 
 ### Use an existing llama-server, local or remote
 

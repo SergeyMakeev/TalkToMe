@@ -1,0 +1,88 @@
+name: Publish release
+run-name: "${{ (github.event_name == 'workflow_dispatch' && !inputs.publish) && 'Rehearse' || 'Release' }} ${{ inputs.tag || github.ref_name }}"
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Version tag (for example v1.2.3)
+        required: true
+        type: string
+      publish:
+        description: Publish to GitHub Releases after all checks pass
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    if: ${{ !github.event.deleted }}
+    runs-on: ubuntu-latest
+    outputs:
+      number: ${{ steps.version.outputs.number }}
+    steps:
+      - id: version
+        name: Validate version tag
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          part='(0|[1-9][0-9]{0,4})'
+          if ! [[ "$TAG" =~ ^v${part}\.${part}\.${part}$ ]]; then
+            echo "::error::Use a stable version tag such as v1.2.3."
+            exit 1
+          fi
+          IFS=. read -ra parts <<< "${TAG#v}"
+          for number in "${parts[@]}"; do
+            if (( number > 65534 )); then
+              echo "::error::Each version component must be at most 65534 for Windows."
+              exit 1
+            fi
+          done
+          echo "number=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: version
+    uses: ./.github/workflows/windows.yml
+    with:
+      version: ${{ needs.version.outputs.number }}
+
+  macos:
+    needs: version
+    uses: ./.github/workflows/macos.yml
+    with:
+      version: ${{ needs.version.outputs.number }}
+
+  release:
+    needs: [version, windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: v${{ needs.version.outputs.number }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          pattern: TalkToMe-*
+      - name: Prepare and verify the three release assets
+        run: |
+          mkdir assets
+          cp artifacts/TalkToMe-Windows-x64/TalkToMe-Windows-x64.zip assets/
+          cp artifacts/TalkToMe-macOS-ARM64/TalkToMe-arm64.zip assets/TalkToMe-macOS-arm64.zip
+          cp artifacts/TalkToMe-macOS-X64/TalkToMe-x86_64.zip assets/TalkToMe-macOS-x86_64.zip
+          for file in assets/*.zip; do unzip -tq "$file"; done
+      - name: Publish the verified assets together
+        if: github.event_name == 'push' || inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/publish-release.sh

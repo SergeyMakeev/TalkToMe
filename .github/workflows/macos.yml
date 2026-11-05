@@ -1,5 +1,14 @@
 name: macOS build
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
 permissions:
   contents: read
 jobs:
@@ -13,6 +22,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Build and sign the app bundle
+        env:
+          APP_VERSION: ${{ inputs.version }}
         run: bash Mac/build.sh
       - name: Check settings, shortcuts and llama-server completions
         run: |
