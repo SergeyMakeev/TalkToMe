@@ -21,10 +21,15 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
       - name: Build and sign the app bundle
         env:
           APP_VERSION: ${{ inputs.version }}
         run: bash Mac/build.sh
+      - name: Mount the installer and test the copied app
+        run: bash Checks/mac_dmg.sh "build/mac/TalkToMe-macOS-$(uname -m).dmg"
       - name: Check settings, shortcuts and llama-server completions
         run: |
           build/mac/TalkToMe.app/Contents/MacOS/TalkToMe --self-test
@@ -52,5 +57,5 @@ jobs:
       - uses: actions/upload-artifact@v6
         with:
           name: TalkToMe-macOS-${{ runner.arch }}
-          path: build/mac/TalkToMe-*.zip
+          path: build/mac/TalkToMe-macOS-*.dmg
           if-no-files-found: error

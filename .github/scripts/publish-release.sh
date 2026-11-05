@@ -27,6 +27,6 @@ else
 fi
 
 # An interrupted upload leaves a draft. A retry replaces its three assets before publishing.
-gh release upload "$TAG" assets/TalkToMe-{Windows-x64,macOS-arm64,macOS-x86_64}.zip --clobber
+gh release upload "$TAG" assets/TalkToMe-Windows-x64.zip assets/TalkToMe-macOS-{arm64,x86_64}.dmg --clobber
 verify_tag
 gh release edit "$TAG" --verify-tag --draft=false
