@@ -9,6 +9,18 @@ internal sealed class Recognizer(Settings settings) : IDisposable
     private Process? worker;
     private readonly SemaphoreSlim gate = new(1);
 
+    // The caller waits for outstanding reads before applying a settings draft.
+    public bool Reconfigure(Settings next)
+    {
+        bool reload = settings.Python != next.Python || settings.WhisperDirectory != next.WhisperDirectory ||
+            settings.Device != next.Device || settings.ComputeType != next.ComputeType ||
+            settings.CudaLibraryDirectory != next.CudaLibraryDirectory;
+        bool transcribeAgain = reload || !settings.Glossary.SequenceEqual(next.Glossary);
+        if (reload) StopWorker();
+        settings = next;
+        return transcribeAgain;
+    }
+
     private async Task<JsonElement> ReplyAsync(CancellationToken token)
     {
         var line = await worker!.StandardOutput.ReadLineAsync(token)
@@ -24,7 +36,7 @@ internal sealed class Recognizer(Settings settings) : IDisposable
         if (worker is { HasExited: false }) return;
         StopWorker();
         var exe = settings.Resolve(settings.Python);
-        if (!File.Exists(exe)) throw new FileNotFoundException("Whisper environment missing. Run setup.ps1 or set python in settings.json.");
+        if (!File.Exists(exe)) throw new FileNotFoundException("Whisper environment missing. Run setup.ps1 or choose a Python interpreter in Settings → Speech.");
         var info = new ProcessStartInfo(exe)
         {
             UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true,

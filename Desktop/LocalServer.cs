@@ -43,12 +43,12 @@ internal sealed class LocalServer(Settings settings) : IDisposable
                     var exe = settings.Resolve(local.Executable);
                     var model = settings.Resolve(local.ModelFile);
                     if (!File.Exists(exe) || !File.Exists(model))
-                        throw new IOException("Check localServer.executable and localServer.modelFile in settings.json.");
+                        throw new IOException("Choose the llama-server executable and GGUF in Settings → Server.");
                     var info = new ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true };
                     foreach (var arg in new[] { "-m", model, "--alias", settings.Model, "--host", uri.DnsSafeHost,
-                        "--port", uri.Port.ToString(), "--ctx-size", "8192", "--parallel", "1", "-ngl", "all",
+                        "--port", uri.Port.ToString(), "--ctx-size", local.ContextSize.ToString(), "--parallel", "1", "-ngl", local.GpuLayers,
                         "--reasoning", "off", "--no-mmproj", "--log-disable" }) info.ArgumentList.Add(arg);
-                    if (Environment.GetEnvironmentVariable("TALKTOME_API_KEY") is { Length: > 0 } key)
+                    if (settings.ReadApiKey() is { Length: > 0 } key)
                         info.Environment["LLAMA_API_KEY"] = key;
                     owned = Process.Start(info) ?? throw new IOException("Could not start local llama-server.");
                 }

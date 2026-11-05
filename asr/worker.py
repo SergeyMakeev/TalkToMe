@@ -16,7 +16,7 @@ def main():
     model_dir, device, compute_type = sys.argv[1:4]
     for filename in ("model.bin", "tokenizer.json", "config.json"):
         if not (Path(model_dir) / filename).is_file():
-            raise ValueError(f"Missing {filename} in {model_dir}. Run setup.ps1 or set whisperDirectory.")
+            raise ValueError(f"Missing {filename} in {model_dir}. Choose the model folder in Settings → Speech.")
 
     import numpy as np
     from faster_whisper import WhisperModel

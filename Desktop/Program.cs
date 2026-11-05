@@ -11,7 +11,16 @@ internal static class Program
         try
         {
             string root = args.Length == 1 ? args[0] : FindInstallation();
-            using var window = new DictationWindow(Settings.Load(root));
+            Settings settings;
+            try { settings = Settings.Load(root); }
+            catch (Exception error) when (error is InvalidDataException or System.Text.Json.JsonException or ArgumentException)
+            {
+                MessageBox.Show($"Could not load your preferences. Review the defaults in Settings and save to replace the invalid file.\n\n{error.Message}", "TalkToMe Settings");
+                settings = Settings.Defaults(root);
+                using var repair = new SettingsDialog(settings, draft => { draft.Save(); settings = draft; return true; });
+                if (repair.ShowDialog() != DialogResult.OK) return;
+            }
+            using var window = new DictationWindow(settings);
             Application.Run(window);
         }
         catch (Exception error) { MessageBox.Show(error.Message, "TalkToMe", MessageBoxButtons.OK, MessageBoxIcon.Error); }

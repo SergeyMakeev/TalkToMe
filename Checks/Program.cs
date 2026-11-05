@@ -23,6 +23,7 @@ internal static class Program
         Application.SetCompatibleTextRenderingDefault(false);
         if (args is ["--field"]) { RunField(); return 0; }
         Assert(Shortcut.Parse("Ctrl+Alt+F9") == new Shortcut(3, Keys.F9), "shortcut");
+        CheckSettings();
         foreach (string bad in new[] { "length", "tool_calls", "" })
             Reject(JsonSerializer.Serialize(new { choices = new[] { new { finish_reason = bad, message = new { content = "Partial" } } } }));
         Reject("""{"choices":[{"finish_reason":"stop","message":{"reasoning_content":"thought","content":"Final"}}]}""");
@@ -71,6 +72,31 @@ internal static class Program
 
     private static void Assert(bool condition, string message)
     { if (!condition) throw new Exception("Check failed: " + message); }
+
+    private static void CheckSettings()
+    {
+        var root = Directory.CreateTempSubdirectory("TalkToMe-check-");
+        try
+        {
+            string path = Path.Combine(root.FullName, "settings.json");
+            File.WriteAllText(path, """{"localServer":{"executable":"llama-server.exe","modelFile":"model.gguf"}}""");
+            var old = Settings.Load(root.FullName);
+            Assert(old.LocalServer is { ContextSize: 8192, GpuLayers: "all" } && old.Sounds && old.RecordingMinutes == 5, "old preference defaults");
+            old.Prompt = "Custom editing instructions."; old.Glossary = ["CFrame", "Vulkan"];
+            old.SetApiKey("example-dummy-key");
+            using var form = new SettingsDialog(old, _ => false);
+            var draft = form.ReadForm();
+            draft.Save();
+            var saved = Settings.Load(root.FullName);
+            Assert(saved.Prompt == old.Prompt && saved.Glossary.SequenceEqual(old.Glossary) && saved.LocalServer == old.LocalServer,
+                "settings dialog round trip");
+            Assert(!File.ReadAllText(path).Contains("example-dummy-key") && saved.ReadApiKey() == "example-dummy-key", "protected server key");
+            saved.CancelShortcut = saved.Shortcut;
+            try { saved.Validate(); } catch (InvalidDataException) { return; }
+            throw new Exception("Duplicate shortcuts accepted.");
+        }
+        finally { root.Delete(recursive: true); }
+    }
     private static string Parse(string json)
     { using var doc = JsonDocument.Parse(json); return EnglishEditor.CompleteText(doc.RootElement); }
     private static void Reject(string json)
