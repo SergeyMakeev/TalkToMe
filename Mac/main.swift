@@ -57,7 +57,18 @@ import AVFoundation
 }
 
 let args = CommandLine.arguments
-if args.contains("--self-test") || args.contains("--check-asr") {
+if args.count == 3 && args[1] == "--check-server" {
+    Task { @MainActor in
+        do {
+            var p = Preferences()
+            p.serverURL = args[2]; p.model = "ci-model"; p.prompt = "CI instructions"; p.glossary = ["Metal"]
+            let result = try await EnglishEditor().edit("Проверка Metal", p)
+            guard result == "Check Metal." else { throw Failure("Unexpected editor response.") }
+            exit(0)
+        } catch { fputs("\(error.localizedDescription)\n", stderr); exit(1) }
+    }
+    dispatchMain()
+} else if args.contains("--self-test") || args.contains("--check-asr") {
     do {
         if args.count == 4 || args.count == 5, args[1] == "--check-asr" {
             var p = Preferences()
@@ -72,6 +83,13 @@ if args.contains("--self-test") || args.contains("--check-asr") {
             print(text)
         } else {
             try Preferences().validate()
+            let temp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: temp) }
+            let file = temp.appendingPathComponent("settings.json")
+            var draft = Preferences()
+            draft.threads = 1; draft.review = true; draft.glossary = ["Metal"]; draft.prompt = "Edit lightly."
+            try draft.save(to: file)
+            guard try Preferences.load(from: file) == draft else { throw Failure("Preferences did not round trip.") }
             guard try KeyChord("Ctrl+Option+F9") == KeyChord("Control+Alt+F9"), !(try EnglishEditor.defaultPrompt).isEmpty else { throw Failure("Defaults failed.") }
             let ok = Data(#"{"choices":[{"finish_reason":"stop","message":{"content":" Hello. "}}]}"#.utf8)
             guard try EnglishEditor.completeText(ok) == "Hello." else { throw Failure("Completion parsing failed.") }

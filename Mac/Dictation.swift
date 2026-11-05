@@ -28,7 +28,7 @@ import AVFoundation
     }
     var canRetry: Bool { phase == .idle && !audio.isEmpty }
     init() {
-        do { let saved = try Preferences.load(); try saved.validate(); prefs = saved }
+        do { prefs = try Preferences.load(); try prefs.validate() }
         catch { status = error.localizedDescription }
         do { try keys.setRecord(prefs.shortcut) } catch { status = error.localizedDescription }
         keys.action = { [weak self] id, down in self?.handleKey(id, down) }
@@ -84,6 +84,7 @@ import AVFoundation
         let id = UUID()
         let destination = prefs.review ? nil : Destination.capture()
         do {
+            try prefs.validate()
             try keys.enableCancel(prefs.cancelShortcut)
             try capture.start(deviceID: prefs.microphone, minutes: prefs.minutes) { [weak self] in
                 guard let self, self.revision == id, self.phase == .recording else { return }
@@ -156,6 +157,8 @@ import AVFoundation
                 if insert, let destination = target,
                    try await destination.insert(text, valid: { self.target != nil && self.revision == id }) {
                     status = "Text sent to the focused field."
+                } else if insert && !p.review && !AXIsProcessTrusted() {
+                    status = "Ready to copy. Allow Accessibility in Settings to insert at the cursor."
                 } else { status = "Ready to review and copy." }
             } catch { if revision == id { status = error.localizedDescription } }
         }

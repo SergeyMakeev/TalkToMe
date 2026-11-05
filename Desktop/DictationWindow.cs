@@ -17,12 +17,19 @@ internal sealed class DictationWindow : Form
         public string Transcript = "";
     }
 
-    private readonly Settings settings;
+    private Settings settings;
     private readonly Func<int, IAudioCapture> openMicrophone;
     private readonly Action<bool> playRecordingSound;
-    private readonly Shortcut shortcut;
-    private readonly Recognizer asr;
-    private readonly EnglishEditor editor;
+    private Shortcut shortcut, cancelShortcut;
+    private Recognizer asr;
+    private EnglishEditor editor;
+    private readonly Label instructions;
+    private readonly ComboBox language, mode;
+    private readonly Button preferences = new() { Text = "Settings…", AutoSize = true };
+    private readonly HashSet<Task> processing = [];
+    private CancellationTokenSource? warmupCancel;
+    private Task warming = Task.CompletedTask;
+    private bool configuring;
     private readonly Overlay overlay = new();
     private readonly AppIcons icons = new();
     private readonly NotifyIcon tray = new() { Text = "TalkToMe" };
@@ -47,6 +54,7 @@ internal sealed class DictationWindow : Form
         this.openMicrophone = openMicrophone ?? (device => new Microphone(device));
         this.playRecordingSound = playRecordingSound ?? RecordingSounds.Play;
         shortcut = Shortcut.Parse(settings.Shortcut);
+        cancelShortcut = Shortcut.Parse(settings.CancelShortcut);
         asr = new(settings);
         editor = new(settings);
         Text = "TalkToMe";
@@ -61,16 +69,16 @@ internal sealed class DictationWindow : Form
         for (int i = 0; i < layout.RowCount; i++)
             layout.RowStyles.Add(i is 4 or 6 ? new RowStyle(SizeType.Percent, i == 4 ? 38 : 62) : new RowStyle(SizeType.AutoSize));
         layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        var instructions = new Label { AutoSize = true, Font = new Font(Font, FontStyle.Bold),
+        instructions = new Label { AutoSize = true, Font = new Font(Font, FontStyle.Bold),
             Text = $"Dictate at the cursor   ·   {settings.Shortcut}" };
         layout.Controls.Add(instructions, 0, 0);
         var options = Row();
-        var language = Choice(["Auto", "Russian", "English"], settings.Language switch { "ru" => 1, "en" => 2, _ => 0 });
-        language.SelectedIndexChanged += (_, _) => { settings.Language = new[] { "auto", "ru", "en" }[language.SelectedIndex]; SaveSettings(); };
-        var mode = Choice(["Hold to talk", "Press to toggle"], settings.Toggle ? 1 : 0);
-        mode.SelectedIndexChanged += (_, _) => { settings.Toggle = mode.SelectedIndex == 1; SaveSettings(); };
+        language = Choice(["Auto", "Russian", "English"], settings.Language switch { "ru" => 1, "en" => 2, _ => 0 });
+        language.SelectedIndexChanged += (_, _) => { if (!configuring) { this.settings.Language = new[] { "auto", "ru", "en" }[language.SelectedIndex]; SaveSettings(); } };
+        mode = Choice(["Hold to talk", "Press to toggle"], settings.Toggle ? 1 : 0);
+        mode.SelectedIndexChanged += (_, _) => { if (!configuring) { this.settings.Toggle = mode.SelectedIndex == 1; SaveSettings(); } };
         copyOnly.Checked = settings.CopyOnly;
-        copyOnly.CheckedChanged += (_, _) => { settings.CopyOnly = copyOnly.Checked; SaveSettings(); };
+        copyOnly.CheckedChanged += (_, _) => { if (!configuring) { this.settings.CopyOnly = copyOnly.Checked; SaveSettings(); } };
         options.Controls.AddRange([new Label { Text = "Input", AutoSize = true, Padding = new Padding(0, 5, 0, 0) }, language, mode, copyOnly]);
         layout.Controls.Add(options, 0, 1);
         layout.Controls.Add(status, 0, 2);
@@ -92,13 +100,15 @@ internal sealed class DictationWindow : Form
         copySource.Click += (_, _) => Copy(original.Text);
         retry.Click += async (_, _) => { if (!busy && current is { Audio: not null } s) await ProcessAsync(s, false); };
         cancel.Click += (_, _) => CancelSession();
-        actions.Controls.AddRange([copyEnglish, copySource, retry, cancel, quit]);
+        preferences.Click += async (_, _) => await ConfigureAsync();
+        actions.Controls.AddRange([copyEnglish, copySource, retry, cancel, preferences, quit]);
         layout.Controls.Add(actions, 0, 7);
         layout.Controls.Add(timingLabel, 0, 8);
         layout.Controls.Add(new Label { AutoSize = true, Text = "Close to keep dictating. Open or quit TalkToMe from the notification area." }, 0, 9);
 
         tray.ContextMenuStrip = new ContextMenuStrip { ImageList = icons.Commands };
         tray.ContextMenuStrip.Items.Add("Show last result", null, (_, _) => OpenPanel()).ImageIndex = (int)CommandIcon.ShowResult;
+        tray.ContextMenuStrip.Items.Add("Settings…", null, async (_, _) => await ConfigureAsync());
         tray.ContextMenuStrip.Items.Add("Cancel dictation", null, (_, _) => CancelSession()).ImageIndex = (int)CommandIcon.Cancel;
         tray.ContextMenuStrip.Items.Add("Quit", null, (_, _) => { exiting = true; Close(); }).ImageIndex = (int)CommandIcon.Quit;
         RefreshCommandIcons();
@@ -133,22 +143,77 @@ internal sealed class DictationWindow : Form
         box.Items.AddRange(items); box.SelectedIndex = selected; return box;
     }
 
-    protected override async void OnShown(EventArgs e)
+    protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
-        if (!WindowsInput.RegisterHotKey(Handle, 1, shortcut.Modifiers | 0x4000, (uint)shortcut.Key))
-        {
-            MessageBox.Show($"Windows could not register {settings.Shortcut}. Set another shortcut in settings.json, then relaunch.", Text);
-            exiting = true; Close(); return;
-        }
         tray.Visible = true; timer.Start();
+        if (!RegisterRecord(shortcut))
+        {
+            SetStatus($"Windows could not register {settings.Shortcut}. Choose a different shortcut in Settings.", null);
+            return;
+        }
+        WarmUp();
+    }
+
+    private bool RegisterRecord(Shortcut chord) => WindowsInput.RegisterHotKey(Handle, 1, chord.Modifiers | 0x4000, (uint)chord.Key);
+    private void WarmUp()
+    {
+        warmupCancel = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token);
+        warming = WarmAsync(warmupCancel.Token);
+    }
+    private async Task WarmAsync(CancellationToken token)
+    {
         SetStatus("Loading dictation models. You can start dictating.", null);
         try
         {
-            await Task.WhenAll(asr.RunAsync(null, "auto", lifetime.Token), editor.PrepareAsync(lifetime.Token));
-            if (current == null && !busy && !exiting) SetStatus("Ready. Focus a text field and use the dictation shortcut.", null);
+            await Task.WhenAll(asr.RunAsync(null, "auto", token), editor.PrepareAsync(token));
+            if (current == null && !busy && !exiting && !token.IsCancellationRequested) SetStatus("Ready. Focus a text field and use the dictation shortcut.", null);
         }
-        catch (Exception ex) { if (current == null && !exiting) SetStatus(ex.Message, null); }
+        catch (Exception ex) { if (!exiting && !token.IsCancellationRequested && !busy) SetStatus(ex.Message, null); }
+    }
+
+    private async Task ConfigureAsync()
+    {
+        if (busy || configuring || exiting) return;
+        configuring = true;
+        try
+        {
+            OpenPanel();
+            using var dialog = new SettingsDialog(settings, draft => {
+                var record = Shortcut.Parse(draft.Shortcut);
+                var cancelKey = Shortcut.Parse(draft.CancelShortcut);
+                WindowsInput.UnregisterHotKey(Handle, 1);
+                try {
+                    if (!RegisterRecord(record)) throw new InvalidDataException("The recording shortcut is in use.");
+                    if (!WindowsInput.RegisterHotKey(Handle, 2, cancelKey.Modifiers | 0x4000, (uint)cancelKey.Key))
+                        throw new InvalidDataException("The cancel shortcut is in use.");
+                    WindowsInput.UnregisterHotKey(Handle, 2);
+                    draft.Save();
+                } catch {
+                    WindowsInput.UnregisterHotKey(Handle, 1);
+                    RegisterRecord(shortcut);
+                    throw;
+                }
+                settings = draft; shortcut = record; cancelShortcut = cancelKey;
+                return true;
+            });
+            if (dialog.ShowDialog(this) != DialogResult.OK || exiting) return;
+            Enabled = false;
+            try {
+                warmupCancel?.Cancel();
+                await Task.WhenAll(processing.Append(warming).ToArray());
+                if (exiting) return;
+                warmupCancel?.Dispose();
+                editor.Dispose(); asr.Dispose();
+                editor = new(settings); asr = new(settings);
+                instructions.Text = $"Dictate at the cursor   ·   {settings.Shortcut}";
+                language.SelectedIndex = settings.Language switch { "ru" => 1, "en" => 2, _ => 0 };
+                mode.SelectedIndex = settings.Toggle ? 1 : 0;
+                copyOnly.Checked = settings.CopyOnly;
+                WarmUp();
+            } finally { if (!exiting) Enabled = true; }
+        }
+        finally { configuring = false; }
     }
 
     private void SaveSettings()
@@ -175,7 +240,7 @@ internal sealed class DictationWindow : Form
         if (m.Msg == 0x0312)
         {
             if (m.WParam == 2) CancelSession();
-            if (m.WParam == 1 && !exiting)
+            if (m.WParam == 1 && !exiting && !configuring)
             {
                 if (microphone != null && settings.Toggle) StopCapture();
                 else if (!busy) StartCapture();
@@ -196,10 +261,11 @@ internal sealed class DictationWindow : Form
     private void SetBusy(bool value)
     {
         busy = value; cancel.Enabled = value && !dispatched;
+        preferences.Enabled = !value;
         UpdateTrayIcon();
         retry.Enabled = !value && current?.Audio != null;
         if (value && !cancelRegistered)
-            cancelRegistered = WindowsInput.RegisterHotKey(Handle, 2, 0x4003, (uint)Keys.F10);
+            cancelRegistered = WindowsInput.RegisterHotKey(Handle, 2, cancelShortcut.Modifiers | 0x4000, (uint)cancelShortcut.Key);
         if (!value && cancelRegistered) { WindowsInput.UnregisterHotKey(Handle, 2); cancelRegistered = false; }
     }
 
@@ -216,7 +282,7 @@ internal sealed class DictationWindow : Form
     {
         if (hideAt != 0 && Environment.TickCount64 >= hideAt) { hideAt = 0; overlay.Hide(); }
         if (busy && current?.Target is {} target && WindowsInput.GetForegroundWindow() != target.Window) current.Target = null;
-        if (microphone != null && ((!settings.Toggle && !shortcut.Held) || current!.Recording.Elapsed.TotalMinutes >= 5))
+        if (microphone != null && ((!settings.Toggle && !shortcut.Held) || current!.Recording.Elapsed.TotalMinutes >= settings.RecordingMinutes))
             StopCapture();
     }
 
@@ -230,10 +296,10 @@ internal sealed class DictationWindow : Form
             capture.Start();
             current = s; dispatched = false;
             original.Clear(); english.Clear(); microphone = capture;
-            playRecordingSound(true);
+            if (settings.Sounds) playRecordingSound(true);
             SetBusy(true);
             var hint = settings.Toggle ? "Press shortcut to finish" : "Release to finish";
-            SetStatus("Recording. " + hint + (cancelRegistered ? ". Ctrl+Alt+F10 cancels." : "."),
+            SetStatus("Recording. " + hint + (cancelRegistered ? $". {settings.CancelShortcut} cancels." : "."),
                 "Recording  ·  " + hint);
             byte[] pcm;
             try { pcm = await capture.Completion; }
@@ -271,7 +337,7 @@ internal sealed class DictationWindow : Form
         if (microphone != capture) return;
         microphone = null;
         UpdateTrayIcon();
-        playRecordingSound(false);
+        if (settings.Sounds) playRecordingSound(false);
     }
 
     private void CancelSession()
@@ -287,6 +353,13 @@ internal sealed class DictationWindow : Form
     }
 
     private async Task ProcessAsync(Session s, bool insert)
+    {
+        var work = ProcessSessionAsync(s, insert);
+        processing.Add(work);
+        try { await work; } finally { processing.Remove(work); }
+    }
+
+    private async Task ProcessSessionAsync(Session s, bool insert)
     {
         var token = s.Cancel.Token;
         dispatched = false;
@@ -359,7 +432,7 @@ internal sealed class DictationWindow : Form
     {
         if (disposing)
         {
-            timer.Dispose(); tray.Dispose(); overlay.Dispose(); editor.Dispose(); asr.Dispose(); lifetime.Dispose();
+            timer.Dispose(); tray.Dispose(); overlay.Dispose(); editor.Dispose(); asr.Dispose(); warmupCancel?.Dispose(); lifetime.Dispose();
         }
         base.Dispose(disposing);
         if (disposing) icons.Dispose();

@@ -24,7 +24,7 @@ internal sealed class Recognizer(Settings settings) : IDisposable
         if (worker is { HasExited: false }) return;
         StopWorker();
         var exe = settings.Resolve(settings.Python);
-        if (!File.Exists(exe)) throw new FileNotFoundException("Whisper environment missing. Run setup.ps1 or set python in settings.json.");
+        if (!File.Exists(exe)) throw new FileNotFoundException("Whisper environment missing. Run setup.ps1 or choose a Python interpreter in Settings → Speech.");
         var info = new ProcessStartInfo(exe)
         {
             UseShellExecute = false, CreateNoWindow = true, RedirectStandardInput = true, RedirectStandardOutput = true,

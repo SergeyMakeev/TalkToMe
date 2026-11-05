@@ -138,12 +138,23 @@ struct Destination {
         AXUIElementSetMessagingTimeout(application, 0.25)
         guard let item = attribute(application, kAXFocusedUIElementAttribute), CFGetTypeID(item) == AXUIElementGetTypeID() else { return nil }
         let el = item as! AXUIElement
+        AXUIElementSetMessagingTimeout(el, 0.25)
         let role = attribute(el, kAXRoleAttribute) as? String ?? ""
         guard ["AXTextField","AXTextArea","AXComboBox","AXSearchField"].contains(role),
               attribute(el, kAXSubroleAttribute) as? String != "AXSecureTextField",
               attribute(el, kAXEnabledAttribute) as? Bool != false else { return nil }
-        let description = [kAXTitleAttribute, kAXDescriptionAttribute, "AXIdentifier"].compactMap { attribute(el, $0) as? String }.joined(separator: " ").lowercased()
-        guard !description.contains("terminal") else { return nil }
+        guard !IsSecureEventInputEnabled() else { return nil }
+        var ancestor: AXUIElement? = el
+        for depth in 0..<12 {
+            guard let node = ancestor else { break }
+            let role = attribute(node, kAXRoleAttribute) as? String
+            if role == "AXWindow" || role == "AXApplication" { break }
+            var labels = ["AXIdentifier", kAXRoleDescriptionAttribute]
+            if depth == 0 { labels += [kAXTitleAttribute, kAXDescriptionAttribute] }
+            if labels.contains(where: { (attribute(node, $0) as? String)?.localizedCaseInsensitiveContains("terminal") == true }) { return nil }
+            guard let parent = attribute(node, kAXParentAttribute), CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
+            ancestor = (parent as! AXUIElement)
+        }
         return Self(pid: app.processIdentifier, field: el)
     }
     func stillFocused() -> Bool { Self.capture().map { $0.pid == pid && CFEqual($0.field, field) } ?? false }
@@ -181,7 +192,8 @@ struct Destination {
             return AXUIElementSetAttributeValue(field, kAXSelectedTextAttribute as CFString, text as CFString) == .success
         }
         // Direct printable input for editors that expose focus but do not allow AX selection replacement.
-        guard !text.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else { return false }
+        guard AXUIElementIsAttributeSettable(field, kAXValueAttribute as CFString, &settable) == .success, settable.boolValue,
+              !text.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else { return false }
         var chunk = [UniChar]()
         func send() -> Bool {
             guard stillFocused(), let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),

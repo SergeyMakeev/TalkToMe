@@ -24,7 +24,11 @@ struct Preferences: Codable, Equatable {
     var prompt = ""
     var whisper = models.appendingPathComponent(ModelDownload.speech.name).path
     var vad = models.appendingPathComponent(ModelDownload.activity.name).path
+    #if arch(arm64)
     var useMetal = true
+    #else
+    var useMetal = false
+    #endif
     var threads = min(8, max(1, ProcessInfo.processInfo.activeProcessorCount / 2))
     var language = "auto"
     var toggle = false
@@ -36,9 +40,9 @@ struct Preferences: Codable, Equatable {
     var cancelShortcut = "Control+Option+F10"
     var glossary = ["SLIM", "RCC", "EditableMesh", "CFrame", "RenderDoc", "Vulkan", "llama.cpp", "draw calls", "latency"]
 
-    static func load() throws -> Self {
-        guard FileManager.default.fileExists(atPath: settingsFile.path) else { return Self() }
-        let saved = try JSONSerialization.jsonObject(with: Data(contentsOf: settingsFile)) as? [String: Any]
+    static func load(from file: URL = settingsFile) throws -> Self {
+        guard FileManager.default.fileExists(atPath: file.path) else { return Self() }
+        let saved = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any]
         guard let saved else { throw Failure("Invalid preferences. Save new settings to repair them.") }
         let defaults = try JSONSerialization.jsonObject(with: JSONEncoder().encode(Self())) as! [String: Any]
         return try JSONDecoder().decode(Self.self, from: JSONSerialization.data(withJSONObject: defaults.merging(saved) { _, new in new }))
@@ -65,9 +69,9 @@ struct Preferences: Codable, Equatable {
         }
         if try KeyChord(shortcut) == KeyChord(cancelShortcut) { throw Failure("Choose different record and cancel shortcuts.") }
     }
-    func save() throws {
-        try FileManager.default.createDirectory(at: Self.support, withIntermediateDirectories: true)
-        try JSONEncoder().encode(self).write(to: Self.settingsFile, options: .atomic)
+    func save(to file: URL = Self.settingsFile) throws {
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONEncoder().encode(self).write(to: file, options: .atomic)
     }
     var keyAccount: String {
         guard let u = try? endpoint() else { return "" }

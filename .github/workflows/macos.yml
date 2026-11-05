@@ -15,12 +15,16 @@ jobs:
       - name: Build and sign the app bundle
         run: bash Mac/build.sh
       - name: Check settings, shortcuts and llama-server completions
-        run: build/mac/TalkToMe.app/Contents/MacOS/TalkToMe --self-test
+        run: |
+          build/mac/TalkToMe.app/Contents/MacOS/TalkToMe --self-test
+          python3 Checks/mac_server.py build/mac/TalkToMe.app/Contents/MacOS/TalkToMe
       - name: Transcribe a sample on the CPU
         run: |
           curl --fail --location --retry 3 -o "$RUNNER_TEMP/tiny.en.bin" https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-tiny.en.bin
           echo "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f  $RUNNER_TEMP/tiny.en.bin" | shasum -a 256 -c -
-          build/mac/TalkToMe.app/Contents/MacOS/TalkToMe --check-asr "$RUNNER_TEMP/tiny.en.bin" build/mac/whisper.cpp/samples/jfk.wav
+          curl --fail --location --retry 3 -o "$RUNNER_TEMP/vad.bin" https://huggingface.co/ggml-org/whisper-vad/resolve/9ffd54a1e1ee413ddf265af9913beaf518d1639b/ggml-silero-v5.1.2.bin
+          echo "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf  $RUNNER_TEMP/vad.bin" | shasum -a 256 -c -
+          build/mac/TalkToMe.app/Contents/MacOS/TalkToMe --check-asr "$RUNNER_TEMP/tiny.en.bin" build/mac/whisper.cpp/samples/jfk.wav "$RUNNER_TEMP/vad.bin"
       - uses: actions/upload-artifact@v6
         with:
           name: TalkToMe-macOS-${{ runner.arch }}

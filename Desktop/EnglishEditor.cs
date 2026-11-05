@@ -29,13 +29,13 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
         if (string.IsNullOrWhiteSpace(transcript)) return "";
         await PrepareAsync(token);
         using var request = new HttpRequestMessage(HttpMethod.Post, config.ServerUrl.TrimEnd('/') + "/chat/completions");
-        var key = Environment.GetEnvironmentVariable("TALKTOME_API_KEY");
+        var key = config.ReadApiKey();
         if (!string.IsNullOrWhiteSpace(key)) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
         request.Content = JsonContent.Create(new
         {
             model = config.Model,
             messages = new[] {
-                new { role = "system", content = Instruction },
+                new { role = "system", content = string.IsNullOrWhiteSpace(config.Prompt) ? Instruction : config.Prompt },
                 new { role = "user", content = JsonSerializer.Serialize(new { transcript, glossary = config.Glossary }, TranscriptJson) }
             },
             chat_template_kwargs = new { enable_thinking = false },
