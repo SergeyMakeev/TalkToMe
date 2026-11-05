@@ -51,7 +51,7 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
 @MainActor final class EnglishEditor {
     private var owned: Process?
     private let session = URLSession(configuration: .ephemeral, delegate: NoRedirect(), delegateQueue: nil)
-    static var defaultPrompt: String {
+    nonisolated static var defaultPrompt: String {
         get throws {
             guard let file = Bundle.main.url(forResource: "EnglishPrompt", withExtension: "txt") else { throw Failure("The app is missing its editing prompt.") }
             return try String(contentsOf: file, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -117,7 +117,7 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         }
         return try Self.completeText(data)
     }
-    static func completeText(_ data: Data) throws -> String {
+    nonisolated static func completeText(_ data: Data) throws -> String {
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         guard let choices = json?["choices"] as? [[String: Any]], choices.count == 1, choices[0]["finish_reason"] as? String == "stop",
               let message = choices[0]["message"] as? [String: Any], let raw = message["content"] as? String else {

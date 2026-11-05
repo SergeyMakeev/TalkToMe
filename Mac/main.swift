@@ -83,9 +83,11 @@ if args.contains("--self-test") || args.contains("--check-asr") {
         }
     } catch { fputs("\(error.localizedDescription)\n", stderr); exit(1) }
 } else {
-    let app = NSApplication.shared
-    let delegate = AppDelegate()
-    app.setActivationPolicy(.regular)
-    app.delegate = delegate
-    app.run()
+    MainActor.assumeIsolated {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.setActivationPolicy(.regular)
+        app.delegate = delegate
+        withExtendedLifetime(delegate) { app.run() }
+    }
 }
