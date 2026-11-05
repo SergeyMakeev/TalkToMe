@@ -36,7 +36,8 @@ struct Preferences: Codable, Equatable {
     var sounds = true
     var minutes = 5
     var microphone = "" // AVCaptureDevice.uniqueID; empty follows the system default.
-    var shortcut = "Control+Option+F9"
+    static let defaultRecordingShortcut = "Ctrl + Numpad 0"
+    var shortcut = Self.defaultRecordingShortcut
     var cancelShortcut = "Control+Option+F10"
     var glossary = ["SLIM", "RCC", "EditableMesh", "CFrame", "RenderDoc", "Vulkan", "llama.cpp", "draw calls", "latency"]
 

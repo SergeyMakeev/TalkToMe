@@ -73,7 +73,14 @@ struct PreferencesView: View {
                     Picker("Spoken language", selection: $p.language) {
                         Text("Automatic").tag("auto"); Text("English").tag("en"); Text("Russian").tag("ru")
                     }
-                    TextField("Recording shortcut", text: $p.shortcut)
+                    LabeledContent("Recording shortcut") {
+                        TextField("Recording shortcut", text: $p.shortcut).labelsHidden()
+                        Menu("Presets") {
+                            ForEach([Preferences.defaultRecordingShortcut, "Control+Option+F9"], id: \.self) { shortcut in
+                                Button(shortcut) { p.shortcut = shortcut }
+                            }
+                        }.fixedSize()
+                    }
                     TextField("Cancel shortcut", text: $p.cancelShortcut)
                     Stepper("Recording limit · \(p.minutes) min", value: $p.minutes, in: 1...60)
                     Toggle("Press to toggle recording", isOn: $p.toggle)

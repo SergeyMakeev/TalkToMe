@@ -10,7 +10,7 @@
   "computeType": "float16",
   "cudaLibraryDirectory": "",
   "language": "auto",
-  "shortcut": "Ctrl+Alt+F9",
+  "shortcut": "Ctrl + Numpad 0",
   "cancelShortcut": "Ctrl+Alt+F10",
   "sounds": true,
   "recordingMinutes": 5,

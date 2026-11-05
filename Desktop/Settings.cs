@@ -18,7 +18,8 @@ internal sealed class Settings
     public string ComputeType { get; set; } = "float16";
     public string CudaLibraryDirectory { get; set; } = "";
     public string Language { get; set; } = "auto";
-    public string Shortcut { get; set; } = "Ctrl+Alt+F9";
+    public const string DefaultRecordShortcut = "Ctrl + Numpad 0";
+    public string Shortcut { get; set; } = DefaultRecordShortcut;
     public string CancelShortcut { get; set; } = "Ctrl+Alt+F10";
     public bool Sounds { get; set; } = true;
     public int RecordingMinutes { get; set; } = 5;

@@ -1,4 +1,5 @@
 import Cocoa
+import Carbon.HIToolbox
 import SwiftUI
 import AVFoundation
 
@@ -99,6 +100,13 @@ if args.count == 3 && args[1] == "--check-server" {
             defer { try? FileManager.default.removeItem(at: temp) }
             let file = temp.appendingPathComponent("settings.json")
             var draft = Preferences()
+            let record = try KeyChord(draft.shortcut)
+            guard record.code == UInt32(kVK_ANSI_Keypad0), record.modifiers == UInt32(controlKey),
+                  try record == KeyChord("Ctrl+NumPad0") else { throw Failure("Default talking shortcut failed.") }
+            for digit in 0...9 {
+                guard try KeyChord("Ctrl + Numpad \(digit)") != KeyChord("Ctrl+\(digit)") else { throw Failure("Keypad and number row must be distinct.") }
+            }
+            draft.shortcut = "Control+Option+F9"
             draft.threads = 1; draft.review = true; draft.glossary = ["Metal"]; draft.prompt = "Edit lightly."
             try draft.save(to: file)
             guard try Preferences.load(from: file) == draft else { throw Failure("Preferences did not round trip.") }
