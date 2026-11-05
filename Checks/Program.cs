@@ -35,7 +35,17 @@ internal static class Program
             using var wav = new WaveFileReader(stream);
             Assert(wav.WaveFormat.Encoding == WaveFormatEncoding.Pcm && wav.Length > 0, cue + " sound");
         }
-        Console.WriteLine("Response, shortcut and embedded sound checks passed.");
+        using (var icons = new AppIcons())
+        {
+            foreach (var icon in new[] { icons.Application, icons.Idle, icons.Recording, icons.Processing })
+                Assert(icon.Handle != IntPtr.Zero, "embedded Windows icon");
+            foreach (int size in new[] { 16, 32 })
+            {
+                icons.RenderCommands(size);
+                Assert(icons.Commands.Images.Count == Enum.GetValues<CommandIcon>().Length, "command icons");
+            }
+        }
+        Console.WriteLine("Response, shortcut, sound and icon checks passed.");
         if (args.Length == 0) return 0;
         if (args[0] != "--desktop" && args is not ["--browser" or "--session", _])
             throw new ArgumentException("Use --desktop [WAV files ...], --session clip.wav or --browser path-to-chromium.exe.");

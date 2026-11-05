@@ -9,6 +9,10 @@ Dictate in Russian, English, or both and insert written English at the cursor in
 3. Keep the destination field focused while TalkToMe transcribes and edits. The complete text is inserted at the current selection. Ordinary dictation never sends Enter.
 4. Double-click the notification icon to see the source transcript and edit or copy the English. **Quit** releases the hotkey and the models started by the app.
 
+![Idle waveform, recording dot, and processing dots](Desktop/Icons/artwork.svg)
+
+The waveform means idle, one dot means recording, and three dots mean TalkToMe is processing your dictation.
+
 The panel offers **Auto**, **Russian**, and **English** input and a **Press to toggle** option for longer dictation. A recording ends at five minutes. **Ctrl+Alt+F10** cancels an active session when Windows can register that shortcut. The panel and tray menu also offer Cancel.
 
 **Review before pasting** keeps each result in the panel for manual copying. If recognition is wrong, change the input language and click **Retry processing** to reuse the recording. A retry with the same language reuses the transcript when available. All retries finish in the panel, so fixing a result cannot insert a second copy.

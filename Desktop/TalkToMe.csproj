@@ -7,10 +7,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>Icons/TalkToMe.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <Using Include="System.IO" />
     <EmbeddedResource Include="Sounds/*.wav" />
+    <EmbeddedResource Include="Icons/*.ico" />
     <PackageReference Include="NAudio.WinMM" Version="2.2.1" />
     <InternalsVisibleTo Include="TalkToMe.Checks" />
   </ItemGroup>

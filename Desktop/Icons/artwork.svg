@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="192" height="64" viewBox="0 0 192 64">
+  <title>TalkToMe · idle, recording and processing</title>
+  <defs>
+    <linearGradient id="ink" x2=".8" y2="1" gradientUnits="objectBoundingBox">
+      <stop stop-color="#274851"/><stop offset=".55" stop-color="#142e39"/><stop offset="1" stop-color="#0a1d2b"/>
+    </linearGradient>
+    <linearGradient id="mint" x2=".65" y2="1">
+      <stop stop-color="#c5ffe7"/><stop offset=".55" stop-color="#82f1c8"/><stop offset="1" stop-color="#48d5b8"/>
+    </linearGradient>
+    <linearGradient id="coral" x2=".65" y2="1">
+      <stop stop-color="#ffdfbe"/><stop offset=".55" stop-color="#ffab89"/><stop offset="1" stop-color="#fa806d"/>
+    </linearGradient>
+    <linearGradient id="iris" x2=".65" y2="1">
+      <stop stop-color="#eee5ff"/><stop offset=".55" stop-color="#c4bbff"/><stop offset="1" stop-color="#9f9af3"/>
+    </linearGradient>
+    <path id="bubble" d="M21 12h22c7.4 0 12 4.7 12 12v8.5c0 7.4-4.6 12-12 12H31L20 53c-1.2.9-2.8.1-2.6-1.4l.9-7.4C12.5 43.3 9 39 9 32.5V24c0-7.3 4.6-12 12-12Z"/>
+    <g id="tile">
+      <rect x="1.5" y="1.5" width="61" height="61" rx="16.5" fill="url(#ink)"/>
+      <rect x="2" y="2" width="60" height="60" rx="16" fill="none" stroke="#dbfff2" stroke-opacity=".23"/>
+      <use xlink:href="#bubble" transform="translate(0 1.8)" fill="#020f18" opacity=".52"/>
+    </g>
+  </defs>
+  <g id="idle">
+    <use xlink:href="#tile"/><use xlink:href="#bubble" fill="url(#mint)"/>
+    <path d="M20 26v5m8-9v13m8-16v19m8-13v7"
+          fill="none" stroke="#143c3d" stroke-width="4.4" stroke-linecap="round"/>
+  </g>
+  <g id="recording" transform="translate(64)">
+    <use xlink:href="#tile"/><use xlink:href="#bubble" fill="url(#coral)"/>
+    <circle cx="32" cy="28.3" r="8" fill="#5b281f"/>
+  </g>
+  <g id="processing" transform="translate(128)">
+    <use xlink:href="#tile"/><use xlink:href="#bubble" fill="url(#iris)"/>
+    <g fill="#373056">
+      <circle cx="21" cy="28.3" r="3.5"/><circle cx="32" cy="28.3" r="3.5"/><circle cx="43" cy="28.3" r="3.5"/>
+    </g>
+  </g>
+</svg>

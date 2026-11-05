@@ -24,7 +24,8 @@ internal sealed class DictationWindow : Form
     private readonly Recognizer asr;
     private readonly EnglishEditor editor;
     private readonly Overlay overlay = new();
-    private readonly NotifyIcon tray = new() { Icon = SystemIcons.Application, Text = "TalkToMe" };
+    private readonly AppIcons icons = new();
+    private readonly NotifyIcon tray = new() { Text = "TalkToMe" };
     private readonly System.Windows.Forms.Timer timer = new() { Interval = 30 };
     private readonly CancellationTokenSource lifetime = new();
     private readonly List<double> timings = [];
@@ -49,6 +50,8 @@ internal sealed class DictationWindow : Form
         asr = new(settings);
         editor = new(settings);
         Text = "TalkToMe";
+        Icon = icons.Application;
+        tray.Icon = icons.Idle;
         Font = new Font("Segoe UI", 10);
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(550, 520);
@@ -79,6 +82,11 @@ internal sealed class DictationWindow : Form
         var copyEnglish = new Button { Text = "Copy English", AutoSize = true };
         var copySource = new Button { Text = "Copy transcript", AutoSize = true };
         var quit = new Button { Text = "Quit", AutoSize = true };
+        SetCommandIcon(copyEnglish, CommandIcon.Copy);
+        SetCommandIcon(copySource, CommandIcon.Copy);
+        SetCommandIcon(retry, CommandIcon.Retry);
+        SetCommandIcon(cancel, CommandIcon.Cancel);
+        SetCommandIcon(quit, CommandIcon.Quit);
         quit.Click += (_, _) => { exiting = true; Close(); };
         copyEnglish.Click += (_, _) => Copy(english.Text);
         copySource.Click += (_, _) => Copy(original.Text);
@@ -89,12 +97,29 @@ internal sealed class DictationWindow : Form
         layout.Controls.Add(timingLabel, 0, 8);
         layout.Controls.Add(new Label { AutoSize = true, Text = "Close to keep dictating. Open or quit TalkToMe from the notification area." }, 0, 9);
 
-        tray.ContextMenuStrip = new ContextMenuStrip();
-        tray.ContextMenuStrip.Items.Add("Show last result", null, (_, _) => OpenPanel());
-        tray.ContextMenuStrip.Items.Add("Cancel dictation", null, (_, _) => CancelSession());
-        tray.ContextMenuStrip.Items.Add("Quit", null, (_, _) => { exiting = true; Close(); });
+        tray.ContextMenuStrip = new ContextMenuStrip { ImageList = icons.Commands };
+        tray.ContextMenuStrip.Items.Add("Show last result", null, (_, _) => OpenPanel()).ImageIndex = (int)CommandIcon.ShowResult;
+        tray.ContextMenuStrip.Items.Add("Cancel dictation", null, (_, _) => CancelSession()).ImageIndex = (int)CommandIcon.Cancel;
+        tray.ContextMenuStrip.Items.Add("Quit", null, (_, _) => { exiting = true; Close(); }).ImageIndex = (int)CommandIcon.Quit;
+        RefreshCommandIcons();
+        DpiChanged += (_, e) => RefreshCommandIcons(e.DeviceDpiNew);
+        SystemColorsChanged += (_, _) => RefreshCommandIcons();
         tray.DoubleClick += (_, _) => OpenPanel();
         timer.Tick += (_, _) => Tick();
+    }
+
+    private void SetCommandIcon(Button button, CommandIcon icon)
+    {
+        button.ImageList = icons.Commands;
+        button.ImageIndex = (int)icon;
+        button.TextImageRelation = TextImageRelation.ImageBeforeText;
+    }
+
+    private void RefreshCommandIcons(int? dpi = null)
+    {
+        int size = (int)Math.Round(16 * (dpi ?? DeviceDpi) / 96d);
+        icons.RenderCommands(size);
+        tray.ContextMenuStrip!.ImageScalingSize = icons.Commands.ImageSize;
     }
 
     private static TextBox TextArea(bool readOnly) => new() {
@@ -171,10 +196,20 @@ internal sealed class DictationWindow : Form
     private void SetBusy(bool value)
     {
         busy = value; cancel.Enabled = value && !dispatched;
+        UpdateTrayIcon();
         retry.Enabled = !value && current?.Audio != null;
         if (value && !cancelRegistered)
             cancelRegistered = WindowsInput.RegisterHotKey(Handle, 2, 0x4003, (uint)Keys.F10);
         if (!value && cancelRegistered) { WindowsInput.UnregisterHotKey(Handle, 2); cancelRegistered = false; }
+    }
+
+    private void UpdateTrayIcon()
+    {
+        var (icon, title) = microphone != null ? (icons.Recording, "TalkToMe · Recording")
+            : busy ? (icons.Processing, "TalkToMe · Processing") : (icons.Idle, "TalkToMe");
+        if (tray.Icon == icon) return;
+        tray.Icon = icon;
+        tray.Text = title;
     }
 
     private void Tick()
@@ -235,6 +270,7 @@ internal sealed class DictationWindow : Form
         // capture can also finish after the next recording has already started.
         if (microphone != capture) return;
         microphone = null;
+        UpdateTrayIcon();
         playRecordingSound(false);
     }
 
@@ -326,5 +362,6 @@ internal sealed class DictationWindow : Form
             timer.Dispose(); tray.Dispose(); overlay.Dispose(); editor.Dispose(); asr.Dispose(); lifetime.Dispose();
         }
         base.Dispose(disposing);
+        if (disposing) icons.Dispose();
     }
 }
