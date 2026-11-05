@@ -10,7 +10,7 @@ Download a versioned build from [GitHub Releases](https://github.com/SergeyMakee
 2. Launch TalkToMe. In **Settings → Dictation**, grant **Microphone** access for recording and **Accessibility** access for insertion into other apps. Select a microphone or follow the system default.
 3. In **Speech**, click **Download recommended models** to install Whisper large-v3-turbo and the speech detector. You can also choose existing whisper.cpp GGML files. Metal acceleration is enabled by default on Apple silicon. Intel defaults to CPU.
 4. In **Server**, enter your llama-server URL including `/v1`, the model alias and an optional API key. To run Qwen on this Mac, enable **Start a local llama-server** and choose your installed executable and GGUF. Click **Save**.
-5. Focus a text field, hold **Control+Option+F9**, speak, and release. **Control+Option+F10** cancels. Closing the window keeps the menu-bar shortcut active. Click the waveform icon to review the transcript, copy the English, open Settings, or quit.
+5. Focus a text field, hold **Ctrl + Numpad 0**, speak, and release. On a keyboard without a numeric keypad, choose **Control+Option+F9** from **Settings → Dictation → Recording shortcut → Presets**, or type your own shortcut and save. **Control+Option+F10** cancels. Closing the window keeps the menu-bar shortcut active. Click the waveform icon to review the transcript, copy the English, open Settings, or quit.
 
 The Mac app checks that the original editable field still has focus before replacing the selection. It can also send single-line Unicode text to compatible editors. If a field is secure, unsupported, or loses focus, the English stays in the result window. Only the explicit **Copy** buttons write to the Mac clipboard.
 
@@ -19,13 +19,15 @@ To build from source on a Mac, install Xcode command line tools, CMake 3.26+ and
 ## Everyday use on Windows
 
 1. Open **TalkToMe.cmd** after setup. Closing the panel leaves the app in the notification area.
-2. Click where you would type. Hold **Ctrl+Alt+F9**, speak, then release. A rising tone signals that the microphone is recording. A falling tone signals that recording has ended, including when you cancel. The recording indicator stays out of the way of keyboard focus.
+2. Turn on **Num Lock**, click where you would type, and hold **Ctrl + Numpad 0** on the numeric keypad. Speak, then release. A rising tone signals that the microphone is recording. A falling tone signals that recording has ended, including when you cancel. The recording indicator stays out of the way of keyboard focus.
 3. Keep the destination field focused while TalkToMe transcribes and edits. The complete text is inserted at the current selection. Ordinary dictation never sends Enter.
 4. Double-click the notification icon to see the source transcript and edit or copy the English. **Quit** releases the hotkey and the models started by the app.
 
 ![Idle waveform, recording dot, and processing dots](Desktop/Icons/artwork.svg)
 
 The waveform means idle, one dot means recording, and three dots mean TalkToMe is processing your dictation.
+
+**Ctrl + Numpad 0** is the default for new installations. To use it with an existing setup, open **Settings → Dictation → Recording shortcut**, select the preset, and click **Save**. You can also type a custom combination or choose **Ctrl+Alt+F9** for a keyboard without a keypad.
 
 The panel offers **Auto**, **Russian**, and **English** input and a **Press to toggle** option. Recordings end after five minutes by default. **Ctrl+Alt+F10** cancels an active session. The panel and tray menu also offer Cancel. Open **Settings** to change either shortcut, recording limit, or audio cues.
 

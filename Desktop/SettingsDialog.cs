@@ -47,7 +47,8 @@ internal sealed class SettingsDialog : Form
         microphone.SelectedItem = selected;
         Row("Microphone", microphone);
         collect.Add(s => s.Microphone = ((InputDevice)microphone.SelectedItem!).Id);
-        TextValue("Record shortcut", settings.Shortcut, (s,v) => s.Shortcut = v);
+        Choice("Recording shortcut", settings.Shortcut, [Settings.DefaultRecordShortcut, "Ctrl+Alt+F9"],
+            (s,v) => s.Shortcut = v, editable: true);
         TextValue("Cancel shortcut", settings.CancelShortcut, (s,v) => s.CancelShortcut = v);
         Number("Recording limit (minutes)", settings.RecordingMinutes, 1, 60, (s,v) => s.RecordingMinutes = (int)v);
         Choice("Spoken language", settings.Language, ["auto","ru","en"], (s,v) => s.Language = v);

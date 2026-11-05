@@ -23,6 +23,13 @@ internal static class Program
         Application.SetCompatibleTextRenderingDefault(false);
         if (args is ["--field"]) { RunField(); return 0; }
         Assert(Shortcut.Parse("Ctrl+Alt+F9") == new Shortcut(3, Keys.F9), "shortcut");
+        Assert(Shortcut.Parse(new Settings().Shortcut) == new Shortcut(2, Keys.NumPad0), "default talking shortcut");
+        for (int digit = 0; digit < 10; digit++)
+        {
+            var keypad = new Shortcut(2, Keys.NumPad0 + digit);
+            Assert(Shortcut.Parse($"Ctrl + Numpad {digit}") == keypad && Shortcut.Parse($"Ctrl+NumPad{digit}") == keypad, "keypad shortcut");
+            Assert(Shortcut.Parse($"Ctrl+{digit}") == new Shortcut(2, Keys.D0 + digit), "top-row shortcut");
+        }
         CheckSettings();
         foreach (string bad in new[] { "length", "tool_calls", "" })
             Reject(JsonSerializer.Serialize(new { choices = new[] { new { finish_reason = bad, message = new { content = "Partial" } } } }));
@@ -79,7 +86,7 @@ internal static class Program
         try
         {
             string path = Path.Combine(root.FullName, "settings.json");
-            File.WriteAllText(path, """{"localServer":{"executable":"llama-server.exe","modelFile":"model.gguf"}}""");
+            File.WriteAllText(path, """{"shortcut":"Ctrl+Alt+F9","localServer":{"executable":"llama-server.exe","modelFile":"model.gguf"}}""");
             var old = Settings.Load(root.FullName);
             Assert(old.LocalServer is { ContextSize: 8192, GpuLayers: "all" } && old.Sounds && old.RecordingMinutes == 5, "old preference defaults");
             old.Prompt = "Custom editing instructions."; old.Glossary = ["CFrame", "Vulkan"];
@@ -88,10 +95,12 @@ internal static class Program
             var draft = form.ReadForm();
             draft.Save();
             var saved = Settings.Load(root.FullName);
+            Assert(saved.Shortcut == "Ctrl+Alt+F9", "saved recording shortcut survives settings dialog");
             Assert(saved.Prompt == old.Prompt && saved.Glossary.SequenceEqual(old.Glossary) && saved.LocalServer == old.LocalServer,
                 "settings dialog round trip");
             Assert(!File.ReadAllText(path).Contains("example-dummy-key") && saved.ReadApiKey() == "example-dummy-key", "protected server key");
-            saved.CancelShortcut = saved.Shortcut;
+            saved.Shortcut = Settings.DefaultRecordShortcut;
+            saved.CancelShortcut = "Ctrl+NumPad0";
             try { saved.Validate(); } catch (InvalidDataException) { return; }
             throw new Exception("Duplicate shortcuts accepted.");
         }

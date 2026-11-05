@@ -11,10 +11,19 @@ struct KeyChord: Equatable {
         "8":28,"0":29,"O":31,"U":32,"I":34,"P":35,"L":37,"J":38,"K":40,"N":45,"M":46,
         "SPACE":49,"ESCAPE":53,"F1":122,"F2":120,"F3":99,"F4":118,"F5":96,"F6":97,"F7":98,
         "F8":100,"F9":101,"F10":109,"F11":103,"F12":111,"F13":105,"F14":107,"F15":113,
-        "F16":106,"F17":64,"F18":79,"F19":80,"F20":90]
+        "F16":106,"F17":64,"F18":79,"F19":80,"F20":90,
+        "NUMPAD0":UInt32(kVK_ANSI_Keypad0), "NUMPAD1":UInt32(kVK_ANSI_Keypad1),
+        "NUMPAD2":UInt32(kVK_ANSI_Keypad2), "NUMPAD3":UInt32(kVK_ANSI_Keypad3),
+        "NUMPAD4":UInt32(kVK_ANSI_Keypad4), "NUMPAD5":UInt32(kVK_ANSI_Keypad5),
+        "NUMPAD6":UInt32(kVK_ANSI_Keypad6), "NUMPAD7":UInt32(kVK_ANSI_Keypad7),
+        "NUMPAD8":UInt32(kVK_ANSI_Keypad8), "NUMPAD9":UInt32(kVK_ANSI_Keypad9)]
     init(_ description: String) throws {
         let parts = description.uppercased().components(separatedBy: "+").map { $0.trimmingCharacters(in: .whitespaces) }
-        guard let name = parts.last, let key = Self.keys[name] else { throw Failure("Use a shortcut such as Control+Option+F9.") }
+        var name = parts.last ?? ""
+        if name.hasPrefix("NUMPAD") {
+            name = "NUMPAD" + name.dropFirst("NUMPAD".count).trimmingCharacters(in: .whitespaces)
+        }
+        guard let key = Self.keys[name] else { throw Failure("Use a shortcut such as \(Preferences.defaultRecordingShortcut).") }
         var mods = 0
         for part in parts.dropLast() {
             switch part {

@@ -16,9 +16,13 @@ internal sealed record Shortcut(uint Modifiers, Keys Key)
                 "alt" => 1u, "ctrl" => 2u, "shift" => 4u, "win" => 8u,
                 _ => throw new InvalidDataException("Unknown shortcut modifier: " + part)
             };
-        if (!Enum.TryParse<Keys>(parts[^1], true, out var key) || !Enum.IsDefined(key) ||
+        var name = parts[^1];
+        if (name.StartsWith("NumPad", StringComparison.OrdinalIgnoreCase))
+            name = "NumPad" + name["NumPad".Length..].TrimStart();
+        if (name.Length == 1 && char.IsAsciiDigit(name[0])) name = "D" + name;
+        if (!Enum.TryParse<Keys>(name, true, out var key) || !Enum.IsDefined(key) ||
             key < Keys.Space || key > Keys.OemClear || key is Keys.LWin or Keys.RWin)
-            throw new InvalidDataException("Set shortcut to a key combination such as Ctrl+Alt+F9.");
+            throw new InvalidDataException($"Set shortcut to a key combination such as {Settings.DefaultRecordShortcut}.");
         return new(modifiers, key);
     }
 
