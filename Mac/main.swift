@@ -32,7 +32,18 @@ import AVFoundation
         controller.refreshMenu = { [weak self] in self?.icon() }
         icon()
         show()
-        if !FileManager.default.fileExists(atPath: Preferences.settingsFile.path) { controller.configure() }
+        let checkWindow = CommandLine.arguments.contains("--check-window")
+        if checkWindow || !FileManager.default.fileExists(atPath: Preferences.settingsFile.path) { controller.configure() }
+        if checkWindow {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                guard self.window.isVisible, self.window.attachedSheet?.isVisible == true, self.item.button?.image != nil else {
+                    fputs("The result window, Settings sheet or menu-bar icon failed to appear.\n", stderr)
+                    exit(1)
+                }
+                print("Result window, Settings sheet and menu-bar icon appeared.")
+                NSApp.terminate(nil)
+            }
+        }
     }
     func icon() {
         let symbol: String

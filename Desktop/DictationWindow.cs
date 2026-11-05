@@ -21,8 +21,8 @@ internal sealed class DictationWindow : Form
     private readonly Func<int, IAudioCapture> openMicrophone;
     private readonly Action<bool> playRecordingSound;
     private Shortcut shortcut, cancelShortcut;
-    private Recognizer asr;
-    private EnglishEditor editor;
+    private readonly Recognizer asr;
+    private readonly EnglishEditor editor;
     private readonly Label instructions;
     private readonly ComboBox language, mode;
     private readonly Button preferences = new() { Text = "Settings…", AutoSize = true };
@@ -163,11 +163,12 @@ internal sealed class DictationWindow : Form
     }
     private async Task WarmAsync(CancellationToken token)
     {
+        var atStart = current;
         SetStatus("Loading dictation models. You can start dictating.", null);
         try
         {
             await Task.WhenAll(asr.RunAsync(null, "auto", token), editor.PrepareAsync(token));
-            if (current == null && !busy && !exiting && !token.IsCancellationRequested) SetStatus("Ready. Focus a text field and use the dictation shortcut.", null);
+            if (current == atStart && !busy && !exiting && !token.IsCancellationRequested) SetStatus("Ready. Focus a text field and use the dictation shortcut.", null);
         }
         catch (Exception ex) { if (!exiting && !token.IsCancellationRequested && !busy) SetStatus(ex.Message, null); }
     }
@@ -204,8 +205,8 @@ internal sealed class DictationWindow : Form
                 await Task.WhenAll(processing.Append(warming).ToArray());
                 if (exiting) return;
                 warmupCancel?.Dispose();
-                editor.Dispose(); asr.Dispose();
-                editor = new(settings); asr = new(settings);
+                editor.Reconfigure(settings);
+                if (asr.Reconfigure(settings) && current != null) current.Language = "";
                 instructions.Text = $"Dictate at the cursor   ·   {settings.Shortcut}";
                 language.SelectedIndex = settings.Language switch { "ru" => 1, "en" => 2, _ => 0 };
                 mode.SelectedIndex = settings.Toggle ? 1 : 0;

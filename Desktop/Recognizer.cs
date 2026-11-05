@@ -9,6 +9,18 @@ internal sealed class Recognizer(Settings settings) : IDisposable
     private Process? worker;
     private readonly SemaphoreSlim gate = new(1);
 
+    // The caller waits for outstanding reads before applying a settings draft.
+    public bool Reconfigure(Settings next)
+    {
+        bool reload = settings.Python != next.Python || settings.WhisperDirectory != next.WhisperDirectory ||
+            settings.Device != next.Device || settings.ComputeType != next.ComputeType ||
+            settings.CudaLibraryDirectory != next.CudaLibraryDirectory;
+        bool transcribeAgain = reload || !settings.Glossary.SequenceEqual(next.Glossary);
+        if (reload) StopWorker();
+        settings = next;
+        return transcribeAgain;
+    }
+
     private async Task<JsonElement> ReplyAsync(CancellationToken token)
     {
         var line = await worker!.StandardOutput.ReadLineAsync(token)

@@ -9,11 +9,28 @@ namespace TalkToMe;
 
 internal sealed class EnglishEditor(Settings config) : IDisposable
 {
-    private readonly LocalServer server = new(config);
+    private LocalServer server = new(config);
     private static readonly JsonSerializerOptions TranscriptJson = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
     public Task PrepareAsync(CancellationToken token) => server.PrepareAsync(token);
-    private readonly HttpClient http = new(new HttpClientHandler { AllowAutoRedirect = false })
-        { Timeout = TimeSpan.FromSeconds(config.TimeoutSeconds) };
+    private HttpClient http = CreateClient(config.TimeoutSeconds);
+    private static HttpClient CreateClient(int seconds) => new(new HttpClientHandler { AllowAutoRedirect = false })
+        { Timeout = TimeSpan.FromSeconds(seconds) };
+
+    public void Reconfigure(Settings next)
+    {
+        if (next.LocalServer != config.LocalServer || next.ServerUrl != config.ServerUrl || next.Model != config.Model ||
+            next.ProtectedApiKey != config.ProtectedApiKey || next.UseEnvironmentKey != config.UseEnvironmentKey)
+        {
+            server.Dispose();
+            server = new(next);
+        }
+        if (next.TimeoutSeconds != config.TimeoutSeconds)
+        {
+            http.Dispose();
+            http = CreateClient(next.TimeoutSeconds);
+        }
+        config = next;
+    }
 
     internal static readonly string Instruction = ReadInstruction();
 

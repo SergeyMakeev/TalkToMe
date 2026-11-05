@@ -11,5 +11,7 @@
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSMicrophoneUsageDescription</key><string>TalkToMe records from your microphone while you dictate and transcribes the audio on this Mac.</string>
   <key>NSLocalNetworkUsageDescription</key><string>TalkToMe connects to the llama-server you select to turn transcripts into written English.</string>
+  <!-- The user can choose an HTTP llama-server on an arbitrary LAN hostname. -->
+  <key>NSAppTransportSecurity</key><dict><key>NSAllowsArbitraryLoads</key><true/></dict>
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>

@@ -61,8 +61,12 @@ import AVFoundation
             try keys.setRecord(p.shortcut)
             try keys.enableCancel(p.cancelShortcut)
             keys.disableCancel()
-            if remove || !key.isEmpty { try Secrets.write(remove ? "" : key, account: p.keyAccount) }
-            try p.save()
+            if remove || !key.isEmpty {
+                let oldKey = try Secrets.read(p.keyAccount)
+                try Secrets.write(remove ? "" : key, account: p.keyAccount)
+                do { try p.save() }
+                catch { try Secrets.write(oldKey, account: p.keyAccount); throw error }
+            } else { try p.save() }
         } catch {
             keys.disableCancel()
             try? keys.setRecord(prefs.shortcut)
@@ -72,6 +76,7 @@ import AVFoundation
             p.gguf != prefs.gguf || p.model != prefs.model || p.contextSize != prefs.contextSize || p.gpuLayers != prefs.gpuLayers ||
             remove || !key.isEmpty { editor.stop() }
         if p.whisper != prefs.whisper || p.useMetal != prefs.useMetal { speech = SpeechEngine() }
+        if p.whisper != prefs.whisper || p.vad != prefs.vad || p.glossary != prefs.glossary { language = "" }
         prefs = p
         status = "Settings saved."
         settingsOpen = false
