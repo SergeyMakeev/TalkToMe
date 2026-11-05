@@ -6,7 +6,7 @@ Download a versioned build from [GitHub Releases](https://github.com/SergeyMakee
 
 ## Install on macOS
 
-1. Download **TalkToMe-macOS-arm64.zip** for Apple silicon or **TalkToMe-macOS-x86_64.zip** for Intel from GitHub Releases. Extract the zip and move **TalkToMe.app** to Applications. You can also download a CI build from a successful Actions run and extract the zip inside its artifact. The app requires macOS 13 or later. CI uses an ad-hoc signature. If Gatekeeper asks for approval, review the app in **System Settings → Privacy & Security**. [Mac builds](https://github.com/SergeyMakeev/TalkToMe/actions/workflows/macos.yml) · [Apple’s guide to opening downloaded apps](https://support.apple.com/en-us/102445)
+1. On macOS 13 or later, download **TalkToMe-macOS-arm64.dmg** for Apple silicon or **TalkToMe-macOS-x86_64.dmg** for Intel. Open the disk image, drag **TalkToMe** onto **Applications**, eject the image, and open the installed app from Applications. For a CI build, extract the Actions artifact to get the DMG. For the **v0.1.0** release, extract the ZIP and move **TalkToMe.app** to Applications. [Releases](https://github.com/SergeyMakeev/TalkToMe/releases) · [Mac builds](https://github.com/SergeyMakeev/TalkToMe/actions/workflows/macos.yml)
 2. Launch TalkToMe. In **Settings → Dictation**, grant **Microphone** access for recording and **Accessibility** access for insertion into other apps. Select a microphone or follow the system default.
 3. In **Speech**, click **Download recommended models** to install Whisper large-v3-turbo and the speech detector. You can also choose existing whisper.cpp GGML files. Metal acceleration is enabled by default on Apple silicon. Intel defaults to CPU.
 4. In **Server**, enter your llama-server URL including `/v1`, the model alias and an optional API key. To run Qwen on this Mac, enable **Start a local llama-server** and choose your installed executable and GGUF. Click **Save**.
@@ -14,7 +14,13 @@ Download a versioned build from [GitHub Releases](https://github.com/SergeyMakee
 
 The Mac app checks that the original editable field still has focus before replacing the selection. It can also send single-line Unicode text to compatible editors. If a field is secure, unsupported, or loses focus, the English stays in the result window. Only the explicit **Copy** buttons write to the Mac clipboard.
 
-To build from source on a Mac, install Xcode command line tools, CMake 3.26+ and Ninja, then run `bash Mac/build.sh`. The script builds the pinned whisper.cpp runtime into the app and writes `build/mac/TalkToMe.app` and a distributable zip.
+### If macOS offers “Move to Trash”
+
+Read the sentence above the buttons. **v0.1.0** and ordinary CI builds use an ad-hoc signature. If the alert says Apple **cannot verify** the developer or check the app for malware, and you trust the download, try opening TalkToMe once, dismiss the alert, then open **System Settings → Privacy & Security**. Scroll to the TalkToMe entry under **Security**, click **Open Anyway**, and confirm. This approves that copy of the app. [Apple’s Gatekeeper guide](https://support.apple.com/en-us/102445)
+
+If the alert says the app **is damaged**, download a fresh copy of the correct architecture from the release page. To compare the downloaded file with GitHub’s SHA-256 digest, run `shasum -a 256` followed by the path to the downloaded ZIP or DMG. If macOS says the app **will damage your computer**, leave it blocked and report the exact message and release version. [Apple’s explanation of these alerts](https://support.apple.com/en-us/102445)
+
+To build from source on a Mac, install Xcode command line tools, CMake 3.26+, Ninja and Python 3.10+, then run `bash Mac/build.sh`. The script builds the pinned whisper.cpp runtime into the app, installs the DMG builder in a project-local virtual environment, and writes `build/mac/TalkToMe.app` and a drag-to-install DMG.
 
 ## Everyday use on Windows
 

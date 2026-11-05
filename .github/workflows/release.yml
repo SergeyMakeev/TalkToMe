@@ -60,6 +60,12 @@ jobs:
     uses: ./.github/workflows/macos.yml
     with:
       version: ${{ needs.version.outputs.number }}
+    secrets:
+      MACOS_DEVELOPER_ID_P12: ${{ secrets.MACOS_DEVELOPER_ID_P12 }}
+      MACOS_P12_PASSWORD: ${{ secrets.MACOS_P12_PASSWORD }}
+      MACOS_NOTARY_KEY_P8: ${{ secrets.MACOS_NOTARY_KEY_P8 }}
+      MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+      MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
 
   release:
     needs: [version, windows, macos]
@@ -78,9 +84,11 @@ jobs:
         run: |
           mkdir assets
           cp artifacts/TalkToMe-Windows-x64/TalkToMe-Windows-x64.zip assets/
-          cp artifacts/TalkToMe-macOS-ARM64/TalkToMe-arm64.zip assets/TalkToMe-macOS-arm64.zip
-          cp artifacts/TalkToMe-macOS-X64/TalkToMe-x86_64.zip assets/TalkToMe-macOS-x86_64.zip
-          for file in assets/*.zip; do unzip -tq "$file"; done
+          cp artifacts/TalkToMe-macOS-ARM64/TalkToMe-macOS-arm64.dmg assets/
+          cp artifacts/TalkToMe-macOS-X64/TalkToMe-macOS-x86_64.dmg assets/
+          unzip -tq assets/TalkToMe-Windows-x64.zip
+          # Each Mac job has already mounted its DMG and run the installed copy.
+          test -s assets/TalkToMe-macOS-arm64.dmg && test -s assets/TalkToMe-macOS-x86_64.dmg
       - name: Publish the verified assets together
         if: github.event_name == 'push' || inputs.publish
         env:

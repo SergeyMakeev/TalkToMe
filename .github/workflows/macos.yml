@@ -9,6 +9,17 @@ on:
       version:
         type: string
         required: true
+    secrets:
+      MACOS_DEVELOPER_ID_P12:
+        required: false
+      MACOS_P12_PASSWORD:
+        required: false
+      MACOS_NOTARY_KEY_P8:
+        required: false
+      MACOS_NOTARY_KEY_ID:
+        required: false
+      MACOS_NOTARY_ISSUER_ID:
+        required: false
 permissions:
   contents: read
 jobs:
@@ -18,13 +29,18 @@ jobs:
       matrix:
         runner: [macos-15, macos-15-intel]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    timeout-minutes: 60
+    env:
+      NOTARIZE: ${{ inputs.version != '' && vars.MACOS_NOTARIZE_RELEASES == 'true' }}
     steps:
       - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
       - name: Build and sign the app bundle
         env:
           APP_VERSION: ${{ inputs.version }}
-        run: bash Mac/build.sh
+        run: bash Mac/build.sh --defer-dmg
       - name: Check settings, shortcuts and llama-server completions
         run: |
           build/mac/TalkToMe.app/Contents/MacOS/TalkToMe --self-test
@@ -49,8 +65,34 @@ jobs:
           curl --fail --location --retry 3 -o "$RUNNER_TEMP/vad.bin" https://huggingface.co/ggml-org/whisper-vad/resolve/9ffd54a1e1ee413ddf265af9913beaf518d1639b/ggml-silero-v5.1.2.bin
           echo "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf  $RUNNER_TEMP/vad.bin" | shasum -a 256 -c -
           build/mac/TalkToMe.app/Contents/MacOS/TalkToMe --check-asr "$RUNNER_TEMP/tiny.en.bin" build/mac/whisper.cpp/samples/jfk.wav "$RUNNER_TEMP/vad.bin"
+      - name: Import Developer ID Application certificate
+        if: env.NOTARIZE == 'true'
+        id: certificate
+        uses: Apple-Actions/import-codesign-certs@288b8ec97b82c66b6f2a6baaf7acc8dfbcbe331c # v7.2.0
+        with:
+          p12-file-base64: ${{ secrets.MACOS_DEVELOPER_ID_P12 }}
+          p12-password: ${{ secrets.MACOS_P12_PASSWORD }}
+      - name: Create drag-to-install DMG
+        env:
+          IDENTITIES: ${{ steps.certificate.outputs.identities }}
+        run: |
+          if [[ "$NOTARIZE" == true ]]; then
+            identity=$(jq -er 'map(select(.name | startswith("Developer ID Application: "))) | select(length == 1) | .[0].hash' <<< "$IDENTITIES")
+            bash Mac/package-dmg.sh "$identity"
+          else
+            bash Mac/package-dmg.sh
+          fi
+      - name: Notarize and staple the release disk image
+        if: env.NOTARIZE == 'true'
+        env:
+          NOTARY_KEY_P8: ${{ secrets.MACOS_NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+        run: bash Mac/notarize-dmg.sh "build/mac/TalkToMe-macOS-$(uname -m).dmg"
+      - name: Mount the installer and test the copied app
+        run: bash Checks/mac_dmg.sh "build/mac/TalkToMe-macOS-$(uname -m).dmg"
       - uses: actions/upload-artifact@v6
         with:
           name: TalkToMe-macOS-${{ runner.arch }}
-          path: build/mac/TalkToMe-*.zip
+          path: build/mac/TalkToMe-macOS-*.dmg
           if-no-files-found: error
