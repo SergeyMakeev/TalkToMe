@@ -1,0 +1,18 @@
+{
+  "serverUrl": "http://127.0.0.1:8080/v1",
+  "model": "dictation",
+  "localServer": null,
+  "temperature": 0.1,
+  "timeoutSeconds": 60,
+  "whisperDirectory": "models/whisper-large-v3-turbo",
+  "python": ".venv/Scripts/python.exe",
+  "device": "cuda",
+  "computeType": "float16",
+  "cudaLibraryDirectory": "",
+  "language": "auto",
+  "shortcut": "Ctrl+Alt+F9",
+  "toggle": false,
+  "copyOnly": false,
+  "microphone": -1,
+  "glossary": ["SLIM", "RCC", "EditableMesh", "CFrame", "RenderDoc", "Vulkan", "llama.cpp", "draw calls", "latency"]
+}

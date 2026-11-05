@@ -1,0 +1,36 @@
+name: Windows build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Build desktop app and checks
+        run: dotnet build Checks/TalkToMe.Checks.csproj --configuration Release
+      - name: Run noninteractive checks
+        run: dotnet run --project Checks/TalkToMe.Checks.csproj --configuration Release --no-build
+      - name: Check Python worker syntax
+        run: python -m py_compile asr/worker.py
+      - name: Publish desktop app
+        run: dotnet publish Desktop/TalkToMe.csproj --configuration Release --no-build --output build/app
+      - uses: actions/upload-artifact@v6
+        with:
+          name: TalkToMe-Windows
+          path: build/app/
+          if-no-files-found: error

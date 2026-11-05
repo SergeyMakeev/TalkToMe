@@ -218,3 +218,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local dictation installation
+/models/
+/settings.json
+bin/
+obj/
