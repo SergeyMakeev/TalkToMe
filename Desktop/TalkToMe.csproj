@@ -11,6 +11,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Using Include="System.IO" />
+    <EmbeddedResource Include="../Shared/EnglishPrompt.txt" LogicalName="TalkToMe.EnglishPrompt.txt" />
     <EmbeddedResource Include="Sounds/*.wav" />
     <EmbeddedResource Include="Icons/*.ico" />
     <PackageReference Include="NAudio.WinMM" Version="2.2.1" />

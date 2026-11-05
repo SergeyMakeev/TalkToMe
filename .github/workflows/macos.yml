@@ -1,0 +1,28 @@
+name: macOS build
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and sign the app bundle
+        run: bash Mac/build.sh
+      - name: Check settings, shortcuts and llama-server completions
+        run: build/mac/TalkToMe.app/Contents/MacOS/TalkToMe --self-test
+      - name: Transcribe a sample on the CPU
+        run: |
+          curl --fail --location --retry 3 -o "$RUNNER_TEMP/tiny.en.bin" https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-tiny.en.bin
+          echo "921e4cf8686fdd993dcd081a5da5b6c365bfde1162e72b08d75ac75289920b1f  $RUNNER_TEMP/tiny.en.bin" | shasum -a 256 -c -
+          build/mac/TalkToMe.app/Contents/MacOS/TalkToMe --check-asr "$RUNNER_TEMP/tiny.en.bin" build/mac/whisper.cpp/samples/jfk.wav
+      - uses: actions/upload-artifact@v6
+        with:
+          name: TalkToMe-macOS-${{ runner.arch }}
+          path: build/mac/TalkToMe-*.zip
+          if-no-files-found: error
