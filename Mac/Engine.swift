@@ -25,7 +25,7 @@ final class SpeechEngine {
         guard pcm.count >= 1600, pcm.contains(where: { abs($0) > 0.0001 }) else { return "" }
         guard FileManager.default.isReadableFile(atPath: p.whisper),
               p.vad.isEmpty || FileManager.default.isReadableFile(atPath: p.vad) else {
-            throw Failure("Open Settings → Speech to download or select the speech models.")
+            throw Failure("Open Settings → Models to download speech models, or choose your files in Speech.")
         }
         if model == nil || path != p.whisper || metal != p.useMetal {
             if let model { ttm_close(model) }
@@ -38,7 +38,7 @@ final class SpeechEngine {
             ttm_transcribe(model, job.pointer, $0.baseAddress, Int32($0.count), p.language, p.glossary.joined(separator: ", "), p.vad, Int32(p.threads))
         }
         guard let result else { throw Failure("Whisper could not finish transcription.") }
-        defer { free(result) }
+        defer { ttm_free_text(result) }
         return String(cString: result).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
@@ -50,7 +50,16 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
 
 @MainActor final class EnglishEditor {
     private var owned: Process?
+    private var port = Int.random(in: 49152...65535)
+    private let privateKey = UUID().uuidString
+    private let privateAlias = UUID().uuidString
+    private var verified = false
     private let session = URLSession(configuration: .ephemeral, delegate: NoRedirect(), delegateQueue: nil)
+    private let loopback: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.connectionProxyDictionary = [:]
+        return URLSession(configuration: config, delegate: NoRedirect(), delegateQueue: nil)
+    }()
     nonisolated static var defaultPrompt: String {
         get throws {
             guard let file = Bundle.main.url(forResource: "EnglishPrompt", withExtension: "txt") else { throw Failure("The app is missing its editing prompt.") }
@@ -60,46 +69,81 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
     func stop() {
         if let owned, owned.isRunning { owned.terminate() }
         owned = nil
+        verified = false
+        port = Int.random(in: 49152...65535)
+    }
+    private func launch(_ p: Preferences, _ base: URL, key: String) throws {
+        try Task.checkCancellation()
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: p.serverExecutable)
+        var arguments = ["-m", p.gguf, "--alias", p.model, "--host", base.host!.trimmingCharacters(in: CharacterSet(charactersIn: "[]")),
+            "--port", String(base.port ?? 80), "--ctx-size", String(p.contextSize), "--parallel", "1", "-ngl", p.gpuLayers,
+            "--reasoning", "off", "--no-mmproj", "--log-disable"]
+        if p.translation.bundled { arguments += ["--offline", "--no-webui"] }
+        process.arguments = arguments
+        var env = ProcessInfo.processInfo.environment
+        if !key.isEmpty { env["LLAMA_API_KEY"] = key }
+        process.environment = env
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+        owned = process
     }
     private func prepare(_ p: Preferences, _ base: URL, key: String) async throws {
         guard p.manageServer else { return }
         try p.validate()
         let health = URL(string: "/health", relativeTo: base)!.absoluteURL
+        let client = p.translation.bundled ? loopback : session
         let deadline = Date().addingTimeInterval(180)
         while Date() < deadline {
             try Task.checkCancellation()
+            if let owned, !owned.isRunning {
+                stop()
+                throw Failure("Local translation stopped. Check available memory and retry.")
+            }
+            if p.translation.bundled && owned == nil { try launch(p, base, key: key) }
             do {
-                let (_, response) = try await session.data(for: URLRequest(url: health, timeoutInterval: 3))
+                let (_, response) = try await client.data(for: URLRequest(url: health, timeoutInterval: 3))
                 switch (response as? HTTPURLResponse)?.statusCode {
-                case 200: return
+                case 200:
+                    if p.translation.bundled && !verified {
+                        var request = URLRequest(url: base.appendingPathComponent("models"), timeoutInterval: 3)
+                        request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization")
+                        let (data, _) = try await client.data(for: request)
+                        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+                        guard let models = json?["data"] as? [[String: Any]], models.contains(where: { $0["id"] as? String == privateAlias }) else {
+                            throw Failure("Could not connect to this app’s translation model. Retry processing.")
+                        }
+                        verified = true
+                    }
+                    return
                 case 503: break
                 default: throw Failure("Unexpected llama-server health response.")
                 }
             } catch let error as URLError where error.code == .cannotConnectToHost {
-                if let owned {
-                    if !owned.isRunning { self.owned = nil; throw Failure("Local llama-server exited. Check the GGUF, port and available memory.") }
-                } else {
-                    let process = Process()
-                    process.executableURL = URL(fileURLWithPath: p.executable)
-                    process.arguments = ["-m", p.gguf, "--alias", p.model, "--host", base.host!.trimmingCharacters(in: CharacterSet(charactersIn: "[]")),
-                        "--port", String(base.port ?? 80), "--ctx-size", String(p.contextSize), "--parallel", "1", "-ngl", p.gpuLayers,
-                        "--reasoning", "off", "--no-mmproj", "--log-disable"]
-                    var env = ProcessInfo.processInfo.environment
-                    if !key.isEmpty { env["LLAMA_API_KEY"] = key }
-                    process.environment = env
-                    process.standardOutput = FileHandle.nullDevice
-                    process.standardError = FileHandle.nullDevice
-                    try process.run()
-                    owned = process
-                }
+                if owned == nil { try launch(p, base, key: key) }
             }
             try await Task.sleep(nanoseconds: 300_000_000)
         }
         throw Failure("Local llama-server is still loading. Retry when it is ready.")
     }
-    func edit(_ transcript: String, _ p: Preferences) async throws -> String {
+    func edit(_ transcript: String, _ preferences: Preferences) async throws -> String {
+        var p = preferences
+        if p.translation == .transcript { return transcript }
+        if p.translation.bundled {
+            let asset = try ModelDownload.get(p.translation.rawValue)
+            guard asset.installed else { throw Failure("Open Settings → Models to download your translation model.") }
+            p.serverURL = "http://127.0.0.1:\(port)/v1"
+            p.manageServer = true
+            p.executable = ""
+            p.gguf = asset.path
+            p.model = privateAlias
+            p.contextSize = 8192
+            p.timeout = max(300, p.timeout)
+            p.gpuLayers = p.useMetal ? "all" : "0"
+        }
         let endpoint = try p.endpoint()
-        let key = try Secrets.read(p.keyAccount)
+        let key = try p.translation.bundled ? privateKey : Secrets.read(p.keyAccount)
         try await prepare(p, endpoint, key: key)
         try Task.checkCancellation()
         var request = URLRequest(url: endpoint.appendingPathComponent("chat/completions"), timeoutInterval: TimeInterval(p.timeout))
@@ -111,7 +155,8 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         request.httpBody = try JSONSerialization.data(withJSONObject: ["model": p.model, "temperature": p.temperature, "stream": false,
             "chat_template_kwargs": ["enable_thinking": false], "max_tokens": min(4096, max(128, transcript.utf16.count + 64)),
             "messages": [["role": "system", "content": instruction], ["role": "user", "content": String(decoding: user, as: UTF8.self)]]])
-        let (data, response) = try await session.data(for: request)
+        let client = p.translation.bundled ? loopback : session
+        let (data, response) = try await client.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw Failure("llama-server returned HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0). Check the server URL, model and API key.")
         }

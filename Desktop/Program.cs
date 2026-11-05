@@ -12,11 +12,11 @@ internal static class Program
         {
             string root = args.Length == 1 ? args[0] : FindInstallation();
             Settings settings;
-            try { settings = Settings.Load(root); }
+            try { settings = Settings.Load(root, useUserDirectory: true); }
             catch (Exception error) when (error is InvalidDataException or System.Text.Json.JsonException or ArgumentException)
             {
                 MessageBox.Show($"Could not load your preferences. Review the defaults in Settings and save to replace the invalid file.\n\n{error.Message}", "TalkToMe Settings");
-                settings = Settings.Defaults(root);
+                settings = Settings.Defaults(root, useUserDirectory: true);
                 using var repair = new SettingsDialog(settings, draft => { draft.Save(); settings = draft; return true; });
                 if (repair.ShowDialog() != DialogResult.OK) return;
             }
@@ -30,6 +30,6 @@ internal static class Program
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
             if (File.Exists(Path.Combine(dir.FullName, "settings.example.json"))) return dir.FullName;
-        return Environment.CurrentDirectory;
+        return AppContext.BaseDirectory;
     }
 }

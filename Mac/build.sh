@@ -18,12 +18,17 @@ cmake --build "$out/native" --target TalkToMe
 app="$out/TalkToMe.app/Contents"
 mkdir -p "$app/MacOS" "$app/Resources" "$out/TalkToMe.iconset"
 cp "$out/native/TalkToMe" "$app/MacOS/"
+python3 Shared/build_engines.py "$out/engines"
+mkdir -p "$app/Helpers"
+cp "$out/engines/llama-server" "$app/Helpers/"
+codesign --force --sign - "$app/Helpers/llama-server"
+cp "$out/engines/llama.cpp-LICENSE.txt" "$app/Resources/"
 cp Mac/Info.plist "$app/"
 if [[ -n "${APP_VERSION:-}" ]]; then
     plutil -replace CFBundleShortVersionString -string "$APP_VERSION" "$app/Info.plist"
     plutil -replace CFBundleVersion -string "$APP_VERSION" "$app/Info.plist"
 fi
-cp Shared/EnglishPrompt.txt Desktop/Sounds/{start,stop}.wav "$app/Resources/"
+cp Shared/{EnglishPrompt.txt,Models.json} Desktop/Sounds/{start,stop}.wav "$app/Resources/"
 cp LICENSE "$app/Resources/TalkToMe-LICENSE.txt"
 cp "$vendor/LICENSE" "$app/Resources/whisper.cpp-LICENSE.txt"
 for size in 16 32 128 256 512; do

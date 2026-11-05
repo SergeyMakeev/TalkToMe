@@ -34,7 +34,8 @@ import AVFoundation
         icon()
         show()
         let checkWindow = CommandLine.arguments.contains("--check-window")
-        if checkWindow || !FileManager.default.fileExists(atPath: Preferences.settingsFile.path) { controller.configure() }
+        let missingModels = (try? controller.prefs.requiredModels().contains { !$0.installed }) ?? true
+        if checkWindow || missingModels || !FileManager.default.fileExists(atPath: Preferences.settingsFile.path) { controller.configure() }
         if checkWindow {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 guard self.window.isVisible, self.window.attachedSheet?.isVisible == true, self.item.button?.image != nil else {
@@ -70,11 +71,25 @@ import AVFoundation
 }
 
 let args = CommandLine.arguments
-if args.count == 3 && args[1] == "--check-server" {
+if args.count == 2 && args[1] == "--check-local-translation" {
+    Task { @MainActor in
+        let editor = EnglishEditor()
+        do {
+            let p = Preferences()
+            _ = try await ModelDownload.get(p.translation.rawValue).install()
+            let text = try await editor.edit("У меня два кота.", p)
+            guard text.lowercased().contains("cat") else { throw Failure("Unexpected local translation: \(text)") }
+            print(text)
+            editor.stop()
+            exit(0)
+        } catch { editor.stop(); fputs("\(error.localizedDescription)\n", stderr); exit(1) }
+    }
+    dispatchMain()
+} else if args.count == 3 && args[1] == "--check-server" {
     Task { @MainActor in
         do {
             var p = Preferences()
-            p.serverURL = args[2]; p.model = "ci-model"; p.prompt = "CI instructions"; p.glossary = ["Metal"]
+            p.translation = .server; p.serverURL = args[2]; p.model = "ci-model"; p.prompt = "CI instructions"; p.glossary = ["Metal"]
             let result = try await EnglishEditor().edit("Проверка Metal", p)
             guard result == "Check Metal." else { throw Failure("Unexpected editor response.") }
             exit(0)
@@ -100,6 +115,10 @@ if args.count == 3 && args[1] == "--check-server" {
             defer { try? FileManager.default.removeItem(at: temp) }
             let file = temp.appendingPathComponent("settings.json")
             var draft = Preferences()
+            guard draft.translation == .qwen08, try draft.requiredModels().count == 3 else { throw Failure("Default local models missing.") }
+            try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
+            try Data("{}".utf8).write(to: file)
+            guard try Preferences.load(from: file).translation == .server else { throw Failure("Legacy server selection lost.") }
             let record = try KeyChord(draft.shortcut)
             guard record.code == UInt32(kVK_ANSI_Keypad0), record.modifiers == UInt32(controlKey),
                   try record == KeyChord("Ctrl+NumPad0") else { throw Failure("Default talking shortcut failed.") }

@@ -8,6 +8,7 @@ dmg="$out/TalkToMe-macOS-$(uname -m).dmg"
 # The release workflow passes the fingerprint of its imported Developer ID Application identity.
 if (( $# )); then
     [[ "$1" =~ ^[[:xdigit:]]{40}$ ]] || { echo "Invalid signing identity" >&2; exit 1; }
+    codesign --force --sign "$1" --timestamp --options runtime "$app/Contents/Helpers/llama-server"
     codesign --force --sign "$1" --timestamp --options runtime --entitlements Mac/audio-input.plist "$app"
 fi
 codesign --verify --deep --strict "$app"

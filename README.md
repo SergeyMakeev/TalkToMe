@@ -1,6 +1,6 @@
 # TalkToMe
 
-Dictate in Russian, English, or both and insert written English at the cursor on macOS or Windows. Whisper transcribes microphone audio on your computer. Qwen translates and edits the transcript through a local or remote llama.cpp `llama-server`.
+Dictate in Russian, English, or both and insert the result at the cursor on macOS or Windows. TalkToMe includes Whisper for listening and llama.cpp for optional English translation and editing. Download your models once in the app. Afterward, both steps work offline.
 
 Download a versioned build from [GitHub Releases](https://github.com/SergeyMakeev/TalkToMe/releases). Maintainers can publish from the GitHub UI or by pushing a version tag. [How to publish a release](.github/workflows/README.md)
 
@@ -8,8 +8,8 @@ Download a versioned build from [GitHub Releases](https://github.com/SergeyMakee
 
 1. On macOS 13 or later, download **TalkToMe-macOS-arm64.dmg** for Apple silicon or **TalkToMe-macOS-x86_64.dmg** for Intel. Open the disk image, drag **TalkToMe** onto **Applications**, eject the image, and open the installed app from Applications. For a CI build, extract the Actions artifact to get the DMG. For the **v0.1.0** release, extract the ZIP and move **TalkToMe.app** to Applications. [Releases](https://github.com/SergeyMakeev/TalkToMe/releases) · [Mac builds](https://github.com/SergeyMakeev/TalkToMe/actions/workflows/macos.yml)
 2. Launch TalkToMe. In **Settings → Dictation**, grant **Microphone** access for recording and **Accessibility** access for insertion into other apps. Select a microphone or follow the system default.
-3. In **Speech**, click **Download recommended models** to install Whisper large-v3-turbo and the speech detector. You can also choose existing whisper.cpp GGML files. Metal acceleration is enabled by default on Apple silicon. Intel defaults to CPU.
-4. In **Server**, enter your llama-server URL including `/v1`, the model alias and an optional API key. To run Qwen on this Mac, enable **Start a local llama-server** and choose your installed executable and GGUF. Click **Save**.
+3. In **Models**, choose a listening model and an output option, then **Download and save**. The default Whisper Base and Qwen 3.5 0.8B downloads total about 624 MB. Choose **Transcript only** to keep the spoken language and download just Whisper and its speech detector (61 MB).
+4. To use existing speech files or change Metal acceleration, open **Speech**. Apple silicon uses Metal by default and Intel uses the CPU. To connect to a separate llama-server, select **Use my own server** in **Models** and enter its details under **Server**.
 5. Focus a text field, hold **Ctrl + Numpad 0**, speak, and release. On a keyboard without a numeric keypad, choose **Control+Option+F9** from **Settings → Dictation → Recording shortcut → Presets**, or type your own shortcut and save. **Control+Option+F10** cancels. Closing the window keeps the menu-bar shortcut active. Click the waveform icon to review the transcript, copy the English, open Settings, or quit.
 
 The Mac app checks that the original editable field still has focus before replacing the selection. It can also send single-line Unicode text to compatible editors. If a field is secure, unsupported, or loses focus, the English stays in the result window. Only the explicit **Copy** buttons write to the Mac clipboard.
@@ -20,11 +20,11 @@ Read the sentence above the buttons. **v0.1.0** and ordinary CI builds use an ad
 
 If the alert says the app **is damaged**, download a fresh copy of the correct architecture from the release page. To compare the downloaded file with GitHub’s SHA-256 digest, run `shasum -a 256` followed by the path to the downloaded ZIP or DMG. If macOS says the app **will damage your computer**, leave it blocked and report the exact message and release version. [Apple’s explanation of these alerts](https://support.apple.com/en-us/102445)
 
-To build from source on a Mac, install Xcode command line tools, CMake 3.26+, Ninja and Python 3.10+, then run `bash Mac/build.sh`. The script builds the pinned whisper.cpp runtime into the app, installs the DMG builder in a project-local virtual environment, and writes `build/mac/TalkToMe.app` and a drag-to-install DMG.
+To build from source on a Mac, install Xcode command line tools, CMake 3.26+, Ninja and Python 3.10+, then run `bash Mac/build.sh`. The script builds the pinned whisper.cpp and llama.cpp runtimes into the app and writes `build/mac/TalkToMe.app` and a drag-to-install DMG.
 
 ## Everyday use on Windows
 
-1. Open **TalkToMe.cmd** after setup. Closing the panel leaves the app in the notification area.
+1. Open **TalkToMe.exe**. Closing the panel leaves the app in the notification area.
 2. Turn on **Num Lock**, click where you would type, and hold **Ctrl + Numpad 0** on the numeric keypad. Speak, then release. A rising tone signals that the microphone is recording. A falling tone signals that recording has ended, including when you cancel. The recording indicator stays out of the way of keyboard focus.
 3. Keep the destination field focused while TalkToMe transcribes and edits. The complete text is inserted at the current selection. Ordinary dictation never sends Enter.
 4. Double-click the notification icon to see the source transcript and edit or copy the English. **Quit** releases the hotkey and the models started by the app.
@@ -41,20 +41,30 @@ The panel offers **Auto**, **Russian**, and **English** input and a **Press to t
 
 ## Install on Windows
 
-Extract **TalkToMe-Windows-x64.zip** from GitHub Releases. The release includes the app and its .NET runtime. For a source checkout, install the .NET 8 SDK with Windows Desktop support.
+1. Extract the entire **TalkToMe-Windows-x64.zip** and double-click **TalkToMe.exe**. Keep the **engines** folder beside it. The build includes the .NET runtime and both inference engines.
+2. In the first-run **Models** screen, choose how to listen and what to insert. Select **Download and save**. The app shows the download size and verifies each file before using it. Enable microphone access for desktop apps in Windows if prompted.
+3. When the panel says **Ready**, focus a text field, hold **Ctrl + Numpad 0**, speak, and release.
 
-Both installations use x64 Python 3.11 with the Windows `py` launcher and a microphone enabled for desktop apps. The CUDA configuration uses cuBLAS for CUDA 12 and cuDNN 9. Their DLL directories must be on PATH or supplied with `-CudaLibraryDirectory`. For CPU transcription, add `-Cpu` to setup. [faster-whisper runtime requirements](https://github.com/SYSTRAN/faster-whisper#requirements)
+## Model choices on either platform
 
-Run the commands below in PowerShell in the extracted release folder or repository. Setup creates a local Python environment, downloads the pinned Whisper model, and writes personal preferences to `settings.json`. A source checkout also builds the desktop executable. Setup can be rerun. [Whisper model](https://huggingface.co/dropbox-dash/faster-whisper-large-v3-turbo)
+| In Settings → Models | Download | Result |
+| --- | ---: | --- |
+| Whisper Base | 61 MB including speech detector | Faster multilingual dictation on a CPU |
+| Whisper Large v3 Turbo | 575 MB including speech detector | Larger multilingual recognizer |
+| Transcript only | None beyond speech | Inserts the transcript in the spoken language |
+| Local Qwen 3.5 0.8B | 563 MB | Translates and lightly edits on this computer |
+| Local Qwen 3.5 2B | 1.28 GB | Larger local translator and editor |
+| Use my own server | None beyond speech | Sends the transcript, editing instructions and glossary to your configured endpoint |
 
-### Use an existing llama-server, local or remote
+You can cancel setup and open **Settings → Models** again. Completed downloads are reused. **Verify downloaded models** checks the installed files against the catalog and replaces damaged files. Audio stays on your computer. [Whisper models](https://huggingface.co/ggerganov/whisper.cpp) · [Qwen 0.8B](https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF) · [Qwen 2B](https://huggingface.co/unsloth/Qwen3.5-2B-GGUF)
 
-```powershell
-.\setup.ps1
-.\TalkToMe.cmd
-```
+### Advanced Windows setups
 
-Open **Settings → Server**, enter the URL (for example, `http://my-gpu-host:8080/v1`), choose the server’s model alias, and enter its optional API key. The client calls `POST /v1/chat/completions`. A remote server receives the source transcript, editing instructions and glossary. Audio stays on the dictating computer.
+Existing preferences keep their configured Python/CUDA speech engine and server. You can switch either one in **Models**. For a new manual faster-whisper environment, `setup.ps1` (or `setup.ps1 -Cpu`) is still available and requires x64 Python 3.11 with the Windows `py` launcher. [faster-whisper runtime requirements](https://github.com/SYSTRAN/faster-whisper#requirements)
+
+To build the bundled path from source, install the .NET 8 SDK, Git, CMake 3.26+, Visual Studio C++ x64 build tools and Python 3.10+. From the repository root run `py -3 Shared/build_engines.py build/engines`, then `dotnet publish Desktop/TalkToMe.csproj -c Release -r win-x64 --self-contained true -o build/app`. Open **TalkToMe.cmd**.
+
+To use an existing llama-server, select **Use my own server** in **Models**. Open **Server**, enter its URL (for example, `http://my-gpu-host:8080/v1`), model alias and optional API key. The client calls `POST /v1/chat/completions`.
 
 For example, on the GPU host, use a recent CUDA build of llama.cpp and a Qwen3.6-35B-A3B GGUF. Set the host to its trusted network interface. For a public or untrusted network, use an authenticated HTTPS endpoint or an SSH tunnel. [llama-server options](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md)
 
@@ -65,7 +75,7 @@ llama-server -m C:\Models\Qwen\Qwen3.6-35B-A3B-Q8_0.gguf --alias dictation --hos
 
 ### Start a local llama-server automatically
 
-In **Settings → Server**, enable **Start a local llama-server**, choose the executable and GGUF, and enter an HTTP loopback URL. For a split GGUF, choose the first shard and keep the other shards beside it. TalkToMe checks for an existing server and starts its own only when needed. Quit stops the process it started. To switch to another machine, turn off the local server option, enter the remote URL and save.
+To use another compatible chat GGUF, select **Use my own server** in **Models**. Under **Server**, enable **Start a local llama-server**, choose the GGUF, and enter an HTTP loopback URL. Leave **Custom llama-server** blank to use the included engine, or choose your own executable. For a split GGUF, choose the first shard and keep the other shards beside it. TalkToMe checks for an existing server and starts its own only when needed. Quit stops the process it started.
 
 ## Preferences and data
 
@@ -74,11 +84,12 @@ Open **Settings** from the result window or the menu-bar / notification-area ico
 | Settings tab | Controls |
 | --- | --- |
 | Dictation | Microphone, spoken language, hold/toggle, record and cancel shortcuts, recording limit, tones, review mode |
-| Speech | Mac model files, model download, Metal and CPU threads. Windows model directory, Python interpreter, compute device, precision and CUDA library directory |
+| Models | Listening model, output language mode, optional local translator, download size and verification |
+| Speech | Mac model files, Metal and CPU threads. Windows custom Python interpreter, model directory and device options |
 | Server | URL, served model alias, API key, timeout, optional local executable and GGUF, context size and GPU layers |
 | Editing | Editing instructions, restore-default button, temperature and personal glossary |
 
-Mac preferences and downloaded models live under `~/Library/Application Support/TalkToMe/`. API keys go into the login Keychain for each server origin. Windows keeps preferences in the installation’s `settings.json` and encrypts a saved key for the current Windows user and server origin. Existing Windows setups can still use `TALKTOME_API_KEY` through the checkbox in **Server**.
+Mac preferences and downloaded models live under `~/Library/Application Support/TalkToMe/`. API keys go into the login Keychain for each server origin. Windows stores new preferences and models under `%LOCALAPPDATA%\TalkToMe` and continues using an existing installation’s `settings.json` if present. Saved server keys are encrypted for the current Windows user and server origin.
 
 Speech activity detection filters silence before source-language transcription. Both clients send the transcript as data, request `enable_thinking: false`, and reject truncated, empty, or reasoning-bearing completions. The recognizer stays loaded between utterances. [Default editing prompt](Shared/EnglishPrompt.txt) · [Qwen model card](https://huggingface.co/Qwen/Qwen3.6-35B-A3B)
 
@@ -88,13 +99,13 @@ Recording begins with the hotkey. The latest recording, transcript and English r
 
 TalkToMe checks the foreground window, keyboard focus, and Windows UI Automation element before sending input. Switching fields, holding modifiers, protected or unidentifiable controls, and detected terminal fields can leave the result ready to copy. Use review mode for embedded terminals or applications with custom input handling. Windows integrity levels can block insertion into an elevated application.
 
-The first insertion method is plain Unicode clipboard paste. TalkToMe saves supported clipboard formats under a lock, marks the temporary text to exclude it from Windows clipboard monitoring, and checks ownership before restoring. If the clipboard changed during processing or contains an unsupported format, standard Windows edit controls can receive a selection replacement directly. Other ordinary fields can receive printable single-line Unicode input. When a complete block cannot be sent safely, use **Copy English**. A recipient can ignore a dispatched paste, so the result remains available in the panel.
+The first insertion method is plain Unicode clipboard paste. TalkToMe saves supported clipboard formats under a lock, marks the temporary text to exclude it from Windows clipboard monitoring, and checks ownership before restoring. If the clipboard changed during processing or contains an unsupported format, standard Windows edit controls can receive a selection replacement directly. Other ordinary fields can receive printable single-line Unicode input. When a complete block cannot be sent safely, use **Copy result**. A recipient can ignore a dispatched paste, so the result remains available in the panel.
 
 A missing model, disconnected server, or failed generation leaves available audio and transcript in the current session. Fix the dependency and click **Retry processing**. The panel reports release-to-input-dispatch time and session median/p95 for automatic insertions.
 
 ## Verification
 
-GitHub Actions builds the Windows app on each push and pull request, runs the noninteractive checks, and checks the Python worker syntax. Each successful run uploads the published desktop binaries as **TalkToMe-Windows**, ready to extract into a configured checkout’s `build/app` folder.
+GitHub Actions builds the Windows app with both native engines, runs the settings checks, downloads the default models and tests CPU transcription and local translation. Each successful run uploads the published desktop binaries as **TalkToMe-Windows**.
 
 The macOS workflow builds and verifies the app bundle separately on Apple silicon and Intel. It checks preference persistence, shortcuts, a llama-server-compatible HTTP exchange and CPU transcription of a bundled sample with Whisper and the speech detector. Microphone permission and insertion into your own editors can be checked by dictating into TextEdit after first launch.
 

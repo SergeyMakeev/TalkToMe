@@ -12,22 +12,22 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
     private LocalServer server = new(config);
     private static readonly JsonSerializerOptions TranscriptJson = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
     public Task PrepareAsync(CancellationToken token) => server.PrepareAsync(token);
-    private HttpClient http = CreateClient(config.TimeoutSeconds);
-    private static HttpClient CreateClient(int seconds) => new(new HttpClientHandler { AllowAutoRedirect = false })
-        { Timeout = TimeSpan.FromSeconds(seconds) };
+    private HttpClient http = CreateClient(config);
+    private static HttpClient CreateClient(Settings s) => new(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = !s.LocalTranslation })
+        { Timeout = TimeSpan.FromSeconds(s.LocalTranslation ? Math.Max(300, s.TimeoutSeconds) : s.TimeoutSeconds) };
 
     public void Reconfigure(Settings next)
     {
-        if (next.LocalServer != config.LocalServer || next.ServerUrl != config.ServerUrl || next.Model != config.Model ||
+        if (next.Translation != config.Translation || next.LocalServer != config.LocalServer || next.ServerUrl != config.ServerUrl || next.Model != config.Model ||
             next.ProtectedApiKey != config.ProtectedApiKey || next.UseEnvironmentKey != config.UseEnvironmentKey)
         {
             server.Dispose();
             server = new(next);
         }
-        if (next.TimeoutSeconds != config.TimeoutSeconds)
+        if (next.TimeoutSeconds != config.TimeoutSeconds || next.LocalTranslation != config.LocalTranslation)
         {
             http.Dispose();
-            http = CreateClient(next.TimeoutSeconds);
+            http = CreateClient(next);
         }
         config = next;
     }
@@ -44,13 +44,14 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
     public async Task<string> EditAsync(string transcript, CancellationToken token)
     {
         if (string.IsNullOrWhiteSpace(transcript)) return "";
+        if (config.Translation == "transcript") return transcript;
         await PrepareAsync(token);
-        using var request = new HttpRequestMessage(HttpMethod.Post, config.ServerUrl.TrimEnd('/') + "/chat/completions");
-        var key = config.ReadApiKey();
+        using var request = new HttpRequestMessage(HttpMethod.Post, server.Endpoint.AbsoluteUri.TrimEnd('/') + "/chat/completions");
+        var key = server.Key;
         if (!string.IsNullOrWhiteSpace(key)) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
         request.Content = JsonContent.Create(new
         {
-            model = config.Model,
+            model = server.Model,
             messages = new[] {
                 new { role = "system", content = string.IsNullOrWhiteSpace(config.Prompt) ? Instruction : config.Prompt },
                 new { role = "user", content = JsonSerializer.Serialize(new { transcript, glossary = config.Glossary }, TranscriptJson) }

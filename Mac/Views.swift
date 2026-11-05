@@ -14,10 +14,10 @@ struct Panel: View {
             Text("Source transcript").font(.headline)
             ScrollView { Text(app.source).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(6) }
                 .frame(minHeight: 50, maxHeight: 120).border(Color.secondary.opacity(0.3))
-            Text("Written English").font(.headline)
+            Text("Dictation result").font(.headline)
             TextEditor(text: $app.english).font(.body).border(Color.secondary.opacity(0.3))
             HStack {
-                Button("Copy English") { app.copy(app.english) }.disabled(app.english.isEmpty)
+                Button("Copy result") { app.copy(app.english) }.disabled(app.english.isEmpty)
                 Button("Copy transcript") { app.copy(app.source) }.disabled(app.source.isEmpty)
                 Spacer()
                 Button("Retry processing") { app.retry() }.disabled(!app.canRetry)
@@ -58,10 +58,57 @@ struct PreferencesView: View {
     func privacy(_ pane: String) {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_" + pane) { NSWorkspace.shared.open(url) }
     }
+    private var downloadMB: Int {
+        let bytes = ((try? p.requiredModels()) ?? []).filter { !$0.installed }.reduce(Int64(0)) { $0 + $1.size }
+        return Int(ceil(Double(bytes) / 1_000_000))
+    }
+    private func installAndSave(verifyOnly: Bool = false) {
+        guard download == nil else { return }
+        var draft = p
+        draft.glossary = glossary.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        if draft.prompt == standard { draft.prompt = "" }
+        download = Task { @MainActor in
+            defer { download = nil }
+            do {
+                try draft.validate()
+                for asset in try draft.requiredModels() where verifyOnly || !asset.installed {
+                    feedback = "\(asset.installed ? "Checking" : "Downloading") \(asset.name)…"
+                    _ = try await asset.install { percent in
+                        Task { @MainActor in
+                            if download != nil && feedback.contains(asset.name) { feedback = "Downloading \(asset.name) · \(percent)%" }
+                        }
+                    }
+                }
+                try Task.checkCancellation()
+                if verifyOnly { feedback = "Selected models verified." }
+                else { try app.save(draft, key: draft.translation == .server ? key : "", remove: draft.translation == .server && remove) }
+            } catch { feedback = Task.isCancelled ? "Download cancelled." : error.localizedDescription }
+        }
+    }
+    private var models: some View {
+        Form {
+            if let small = ModelDownload.catalog["base"], let large = ModelDownload.catalog["speech"] {
+                Picker("Listen with", selection: $p.whisper) {
+                    Text("Whisper Base · smaller and faster · 61 MB").tag(small.path)
+                    Text("Whisper Large v3 Turbo · 575 MB").tag(large.path)
+                    if p.whisper != small.path && p.whisper != large.path { Text("Custom speech model").tag(p.whisper) }
+                }
+            }
+            Picker("Translate and edit with", selection: $p.translation) {
+                ForEach(Translation.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+            if downloadMB > 0 { Text("Download \(downloadMB) MB once to use these models offline.") }
+            else if let assets = try? p.requiredModels(), !assets.isEmpty {
+                Text("Selected models are ready for offline use.")
+                Button("Verify downloaded models") { installAndSave(verifyOnly: true) }
+            }
+        }
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("TalkToMe Settings").font(.title2.bold())
             TabView {
+                models.tabItem { Text("Models") }
                 Form {
                     Picker("Microphone", selection: $p.microphone) {
                         Text("System default").tag("")
@@ -104,23 +151,12 @@ struct PreferencesView: View {
                     Text("Leave the speech detector empty to disable silence filtering.").foregroundStyle(.secondary)
                     Toggle("Use Metal acceleration", isOn: $p.useMetal)
                     Stepper("CPU threads · \(p.threads)", value: $p.threads, in: 1...128)
-                    Button(download == nil ? "Download recommended models (575 MB)" : "Cancel download") {
-                        if let download { download.cancel(); return }
-                        download = Task { @MainActor in
-                            defer { download = nil }
-                            do {
-                                feedback = "Downloading Whisper…"
-                                let speech = try await ModelDownload.speech.install()
-                                feedback = "Downloading the speech detector…"
-                                let vad = try await ModelDownload.activity.install()
-                                try Task.checkCancellation()
-                                p.whisper = speech; p.vad = vad
-                                feedback = "Models verified. Save to use them."
-                            } catch { feedback = Task.isCancelled ? "Download cancelled." : error.localizedDescription }
-                        }
+                    Button("Use recommended speech models") {
+                        p.whisper = ModelDownload.catalog["base"]?.path ?? ""
+                        p.vad = ModelDownload.catalog["activity"]?.path ?? ""
                     }
                 }.tabItem { Text("Speech") }
-                Form {
+                if p.translation == .server { Form {
                     TextField("Server URL (including /v1)", text: $p.serverURL)
                         .onChange(of: p.serverURL) { _ in key = ""; remove = false }
                     TextField("Served model or alias", text: $p.model)
@@ -130,11 +166,11 @@ struct PreferencesView: View {
                     TextField("Request timeout (seconds)", value: $p.timeout, format: .number.grouping(.never))
                     Toggle("Start a local llama-server when needed", isOn: $p.manageServer)
                     Group {
-                        path("llama-server executable", $p.executable); path("Qwen GGUF", $p.gguf)
+                        path("Custom llama-server (optional)", $p.executable); path("Translation model (GGUF)", $p.gguf)
                         TextField("Context size", value: $p.contextSize, format: .number.grouping(.never))
                         TextField("GPU layers (all or a number)", text: $p.gpuLayers)
                     }.disabled(!p.manageServer)
-                }.tabItem { Text("Server") }
+                }.tabItem { Text("Server") } }
                 VStack(alignment: .leading) {
                     HStack {
                         Text("Editing instructions").font(.headline)
@@ -145,19 +181,16 @@ struct PreferencesView: View {
                     TextEditor(text: $glossary).border(Color.secondary.opacity(0.3))
                     LabeledContent("Temperature · \(p.temperature, specifier: "%.2f")") { Slider(value: $p.temperature, in: 0...2, step: 0.01) }
                 }.padding().tabItem { Text("Editing") }
-            }.formStyle(.grouped)
+            }.formStyle(.grouped).disabled(download != nil)
             HStack {
+                if download != nil { ProgressView().controlSize(.small) }
                 Text(feedback).foregroundStyle(.secondary).textSelection(.enabled)
                 Spacer()
-                Button("Cancel") { app.settingsOpen = false }.keyboardShortcut(.cancelAction)
-                Button("Save") {
-                    do {
-                        var draft = p
-                        draft.glossary = glossary.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-                        if draft.prompt == standard { draft.prompt = "" }
-                        try app.save(draft, key: key, remove: remove)
-                    } catch { feedback = error.localizedDescription }
-                }.keyboardShortcut(.defaultAction).disabled(download != nil)
+                Button(download == nil ? "Cancel" : "Cancel download") {
+                    if let download { download.cancel() } else { app.settingsOpen = false }
+                }.keyboardShortcut(.cancelAction)
+                Button(downloadMB > 0 ? "Download and save" : "Save") { installAndSave() }
+                    .keyboardShortcut(.defaultAction).disabled(download != nil)
             }
         }.padding(18).frame(width: 680, height: 580)
         .onDisappear { download?.cancel() }

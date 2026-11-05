@@ -7,16 +7,18 @@ namespace TalkToMe;
 internal sealed class Recognizer(Settings settings) : IDisposable
 {
     private Process? worker;
+    private readonly BundledSpeech bundled = new();
     private readonly SemaphoreSlim gate = new(1);
 
     // The caller waits for outstanding reads before applying a settings draft.
     public bool Reconfigure(Settings next)
     {
-        bool reload = settings.Python != next.Python || settings.WhisperDirectory != next.WhisperDirectory ||
+        bool reload = settings.BundledSpeech != next.BundledSpeech || settings.SpeechModel != next.SpeechModel ||
+            settings.Python != next.Python || settings.WhisperDirectory != next.WhisperDirectory ||
             settings.Device != next.Device || settings.ComputeType != next.ComputeType ||
             settings.CudaLibraryDirectory != next.CudaLibraryDirectory;
         bool transcribeAgain = reload || !settings.Glossary.SequenceEqual(next.Glossary);
-        if (reload) StopWorker();
+        if (reload) { StopWorker(); bundled.Dispose(); }
         settings = next;
         return transcribeAgain;
     }
@@ -57,6 +59,8 @@ internal sealed class Recognizer(Settings settings) : IDisposable
         await gate.WaitAsync(token);
         try
         {
+            if (settings.BundledSpeech)
+                return await Task.Run(() => bundled.Run(pcm, language, settings, token), token);
             await EnsureWorkerAsync(token);
             if (pcm is null) return ""; // Warm up the resident model.
             string request = JsonSerializer.Serialize(new { pcm, language = language == "auto" ? null : language, glossary = settings.Glossary });
@@ -76,5 +80,5 @@ internal sealed class Recognizer(Settings settings) : IDisposable
         finally { worker.Dispose(); worker = null; }
     }
 
-    public void Dispose() => StopWorker();
+    public void Dispose() { StopWorker(); bundled.Dispose(); }
 }

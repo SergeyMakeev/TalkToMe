@@ -72,7 +72,8 @@ import AVFoundation
             try? keys.setRecord(prefs.shortcut)
             throw error
         }
-        if p.serverURL != prefs.serverURL || p.manageServer != prefs.manageServer || p.executable != prefs.executable ||
+        if p.translation != prefs.translation || (p.translation.bundled && p.useMetal != prefs.useMetal) ||
+            p.serverURL != prefs.serverURL || p.manageServer != prefs.manageServer || p.executable != prefs.executable ||
             p.gguf != prefs.gguf || p.model != prefs.model || p.contextSize != prefs.contextSize || p.gpuLayers != prefs.gpuLayers ||
             remove || !key.isEmpty { editor.stop() }
         if p.whisper != prefs.whisper || p.useMetal != prefs.useMetal { speech = SpeechEngine() }
@@ -155,7 +156,7 @@ import AVFoundation
                     source = result; language = p.language; english = ""
                 }
                 guard !source.isEmpty else { audio.removeAll(); status = "No speech detected."; return }
-                status = "Writing English with llama-server…"
+                if p.translation != .transcript { status = "Writing English…" }
                 let text = try await editor.edit(source, p)
                 try Task.checkCancellation()
                 english = text

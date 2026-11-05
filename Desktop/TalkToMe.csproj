@@ -12,9 +12,15 @@
   <ItemGroup>
     <Using Include="System.IO" />
     <EmbeddedResource Include="../Shared/EnglishPrompt.txt" LogicalName="TalkToMe.EnglishPrompt.txt" />
+    <EmbeddedResource Include="../Shared/Models.json" LogicalName="TalkToMe.Models.json" />
+    <Content Include="../build/engines/*" Link="engines/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <EmbeddedResource Include="Sounds/*.wav" />
     <EmbeddedResource Include="Icons/*.ico" />
     <PackageReference Include="NAudio.WinMM" Version="2.2.1" />
     <InternalsVisibleTo Include="TalkToMe.Checks" />
   </ItemGroup>
+  <Target Name="CheckBundledEngines" BeforeTargets="PrepareForPublish" Condition="'$(SelfContained)' == 'true'">
+    <Error Condition="!Exists('../build/engines/TalkToMeSpeech.dll') Or !Exists('../build/engines/llama-server.exe')"
+           Text="Build the native engines before publishing. Run py -3 Shared/build_engines.py build/engines from the repository root." />
+  </Target>
 </Project>

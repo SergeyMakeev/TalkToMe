@@ -15,6 +15,10 @@ try {
     $settingsFile = Join-Path $PSScriptRoot 'settings.json'
     $source = if (Test-Path -LiteralPath $settingsFile) { $settingsFile } else { 'settings.example.json' }
     $config = Get-Content -Raw -LiteralPath $source | ConvertFrom-Json
+    $config | Add-Member -Force -NotePropertyName bundledSpeech -NotePropertyValue $false
+    if ($ServerUrl -or $LlamaServer -or !(Test-Path -LiteralPath $settingsFile) -or !$config.PSObject.Properties['translation']) {
+        $config | Add-Member -Force -NotePropertyName translation -NotePropertyValue 'server'
+    }
     if ($ServerUrl) { $config.serverUrl = $ServerUrl }
     if ($LlamaServer) {
         if (-not $ServerUrl) { $config.serverUrl = 'http://127.0.0.1:8080/v1' }
@@ -54,7 +58,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'Restore failed. Install the .NET 8 SDK and check NuGet access.' }
         dotnet publish Desktop/TalkToMe.csproj --no-restore -c Release -o build/app
         if ($LASTEXITCODE -ne 0) { throw 'Publishing the desktop app failed.' }
-    } elseif (-not (Test-Path -LiteralPath 'build/app/TalkToMe.exe')) {
+    } elseif (-not (Test-Path -LiteralPath 'TalkToMe.exe') -and -not (Test-Path -LiteralPath 'build/app/TalkToMe.exe')) {
         throw 'TalkToMe.exe is missing. Extract the complete Windows release archive and run setup again.'
     }
     $config | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -LiteralPath $settingsFile

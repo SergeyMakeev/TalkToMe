@@ -10,6 +10,17 @@ internal sealed class Settings
     public string ServerUrl { get; set; } = "http://127.0.0.1:8080/v1";
     public string Model { get; set; } = "dictation";
     public LocalServerSettings? LocalServer { get; set; }
+    // Missing keys in existing preferences select the original user-configured engines.
+    public bool BundledSpeech { get; set; }
+    public string SpeechModel { get; set; } = "base";
+    public string Translation { get; set; } = "server";
+    [JsonIgnore] public bool LocalTranslation => Translation is "qwen08" or "qwen2";
+    [JsonIgnore] public string ModelDirectory { get; set; } = Path.Combine(UserDirectory, "Models");
+    public IEnumerable<string> RequiredModels()
+    {
+        if (BundledSpeech) { yield return SpeechModel; yield return "activity"; }
+        if (LocalTranslation) yield return Translation;
+    }
     public double Temperature { get; set; } = 0.1;
     public int TimeoutSeconds { get; set; } = 60;
     public string WhisperDirectory { get; set; } = "models/whisper-large-v3-turbo";
@@ -32,24 +43,35 @@ internal sealed class Settings
     public string[] Glossary { get; set; } = [];
 
     [JsonIgnore] public string Root { get; private set; } = "";
+    public static string UserDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TalkToMe");
+    [JsonIgnore] private string SettingsFile { get; set; } = "";
     private static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase, WriteIndented = true,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
     };
 
-    public static Settings Load(string root)
+    private static string PreferenceFile(string root, bool useUserDirectory)
     {
-        var file = Path.Combine(root, "settings.json");
-        if (!File.Exists(file)) file = Path.Combine(root, "settings.example.json");
-        var config = File.Exists(file) ? JsonSerializer.Deserialize<Settings>(File.ReadAllText(file), Json)
-            ?? throw new InvalidDataException("Settings must be a JSON object.") : new Settings();
+        var file = Path.Combine(Path.GetFullPath(root), "settings.json");
+        return useUserDirectory && !File.Exists(file) ? Path.Combine(UserDirectory, "settings.json") : file;
+    }
+    public static Settings Load(string root, bool useUserDirectory = false)
+    {
+        var file = PreferenceFile(root, useUserDirectory);
+        string source = File.Exists(file) ? file : Path.Combine(root, "settings.example.json");
+        var config = File.Exists(source) ? JsonSerializer.Deserialize<Settings>(File.ReadAllText(source), Json)
+            ?? throw new InvalidDataException("Settings must be a JSON object.") : Defaults(root);
+        config.SettingsFile = file;
         config.Root = Path.GetFullPath(root);
         config.Validate();
         return config;
     }
 
-    public static Settings Defaults(string root) => new() { Root = Path.GetFullPath(root) };
+    public static Settings Defaults(string root, bool useUserDirectory = false) => new()
+    {
+        Root = Path.GetFullPath(root), SettingsFile = PreferenceFile(root, useUserDirectory), BundledSpeech = true, Translation = "qwen08"
+    };
     public Settings Draft() => (Settings)MemberwiseClone();
     public void Validate()
     {
@@ -57,7 +79,8 @@ internal sealed class Settings
             uri.Scheme is not ("http" or "https") || uri.Host.Length == 0 ||
             uri.UserInfo.Length + uri.Query.Length + uri.Fragment.Length != 0)
             throw new InvalidDataException("serverUrl must be an HTTP(S) base URL, for example http://127.0.0.1:8080/v1.");
-        if (Language is not ("auto" or "en" or "ru") || TimeoutSeconds is < 1 or > 600 ||
+        if (SpeechModel is not ("base" or "speech") || Translation is not ("server" or "transcript" or "qwen08" or "qwen2") ||
+            Language is not ("auto" or "en" or "ru") || TimeoutSeconds is < 1 or > 600 ||
             !double.IsFinite(Temperature) || Temperature is < 0 or > 2 || string.IsNullOrWhiteSpace(Model) || Glossary is null ||
             RecordingMinutes is < 1 or > 60 || Microphone < -1 || string.IsNullOrWhiteSpace(Python) ||
             string.IsNullOrWhiteSpace(WhisperDirectory) || string.IsNullOrWhiteSpace(Device) || string.IsNullOrWhiteSpace(ComputeType))
@@ -66,9 +89,9 @@ internal sealed class Settings
             throw new InvalidDataException("Enter a recording and a cancel shortcut.");
         if (TalkToMe.Shortcut.Parse(Shortcut) == TalkToMe.Shortcut.Parse(CancelShortcut))
             throw new InvalidDataException("Choose different record and cancel shortcuts.");
-        if (LocalServer is {} local && (string.IsNullOrWhiteSpace(local.Executable) || string.IsNullOrWhiteSpace(local.ModelFile) ||
+        if (LocalServer is {} local && (string.IsNullOrWhiteSpace(local.ModelFile) ||
             local.ContextSize < 512 || (local.GpuLayers != "all" && (!int.TryParse(local.GpuLayers, out int n) || n < 0))))
-            throw new InvalidDataException("Choose a llama-server executable, GGUF, context size and GPU layer count.");
+            throw new InvalidDataException("Choose a GGUF, context size and GPU layer count.");
     }
 
     private byte[] KeyScope() => Encoding.UTF8.GetBytes(new Uri(ServerUrl).GetLeftPart(UriPartial.Authority));
@@ -85,7 +108,8 @@ internal sealed class Settings
 
     public void Save()
     {
-        var file = Resolve("settings.json");
+        var file = SettingsFile.Length > 0 ? SettingsFile : Resolve("settings.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(file))!);
         File.WriteAllText(file + ".tmp", JsonSerializer.Serialize(this, Json));
         File.Move(file + ".tmp", file, true);
     }

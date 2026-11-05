@@ -84,10 +84,10 @@ internal sealed class DictationWindow : Form
         layout.Controls.Add(status, 0, 2);
         layout.Controls.Add(Caption("Source transcript"), 0, 3);
         layout.Controls.Add(original, 0, 4);
-        layout.Controls.Add(Caption("Written English"), 0, 5);
+        layout.Controls.Add(Caption("Dictation result"), 0, 5);
         layout.Controls.Add(english, 0, 6);
         var actions = Row();
-        var copyEnglish = new Button { Text = "Copy English", AutoSize = true };
+        var copyEnglish = new Button { Text = "Copy result", AutoSize = true };
         var copySource = new Button { Text = "Copy transcript", AutoSize = true };
         var quit = new Button { Text = "Quit", AutoSize = true };
         SetCommandIcon(copyEnglish, CommandIcon.Copy);
@@ -152,7 +152,12 @@ internal sealed class DictationWindow : Form
             SetStatus($"Windows could not register {settings.Shortcut}. Choose a different shortcut in Settings.", null);
             return;
         }
-        WarmUp();
+        if (settings.RequiredModels().Any(id => !ModelDownload.Get(id).Installed(settings.ModelDirectory)))
+        {
+            SetStatus("Open Settings → Models to finish setting up dictation.", null);
+            BeginInvoke(new Action(async () => await ConfigureAsync()));
+        }
+        else WarmUp();
     }
 
     private bool RegisterRecord(Shortcut chord) => WindowsInput.RegisterHotKey(Handle, 1, chord.Modifiers | 0x4000, (uint)chord.Key);
@@ -383,7 +388,7 @@ internal sealed class DictationWindow : Form
                 SetStatus("No speech detected.", "No speech detected", true);
                 return;
             }
-            SetStatus("Writing English with llama-server…", "Writing English…");
+            if (settings.Translation != "transcript") SetStatus("Writing English…", "Writing English…");
             var result = await editor.EditAsync(s.Transcript, token);
             if (current != s || exiting) return;
             english.Text = result.ReplaceLineEndings();
@@ -397,7 +402,7 @@ internal sealed class DictationWindow : Form
             });
             if (current != s || exiting) return;
             SetStatus(held == null ? "Text sent to the focused field. The result is also available here." :
-                held + " Review and copy the English here.", held == null ? "Text sent" : "Ready to copy  ·  Open TalkToMe", true);
+                held + " Review and copy the result here.", held == null ? "Text sent" : "Ready to copy  ·  Open TalkToMe", true);
         }
         catch (Exception ex)
         {

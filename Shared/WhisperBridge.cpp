@@ -1,6 +1,7 @@
 #include "WhisperBridge.h"
 #include "whisper.h"
 #include <atomic>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 
@@ -10,6 +11,7 @@ void *ttm_open(const char *path, bool metal) {
     return whisper_init_from_file_with_params(path, params);
 }
 void ttm_close(void *model) { whisper_free(static_cast<whisper_context *>(model)); }
+void ttm_free_text(char *text) { std::free(text); }
 void *ttm_new_job() { return new std::atomic_bool(false); }
 void ttm_cancel(void *job) { static_cast<std::atomic_bool *>(job)->store(true); }
 void ttm_free_job(void *job) { delete static_cast<std::atomic_bool *>(job); }
@@ -33,5 +35,7 @@ char *ttm_transcribe(void *model, void *job, const float *pcm, int count, const 
     if (whisper_full(ctx, p, pcm, count) != 0) return nullptr;
     std::string text;
     for (int i = 0; i < whisper_full_n_segments(ctx); ++i) text += whisper_full_get_segment_text(ctx, i);
-    return strdup(text.c_str());
+    auto *result = static_cast<char *>(std::malloc(text.size() + 1));
+    if (result) std::memcpy(result, text.c_str(), text.size() + 1);
+    return result;
 }

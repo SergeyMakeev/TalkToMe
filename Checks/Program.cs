@@ -21,6 +21,12 @@ internal static class Program
         }
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
+        if (args.Length is 3 or 4 && args[0] == "--local-models")
+        {
+            // Exercise first install, cached install and inference without a microphone or user settings.
+            try { CheckLocalModels(args[1], args[2], args.Length == 4 ? args[3] : "qwen08").GetAwaiter().GetResult(); return 0; }
+            catch (Exception error) { Console.Error.WriteLine(error); return 1; }
+        }
         if (args is ["--field"]) { RunField(); return 0; }
         Assert(Shortcut.Parse("Ctrl+Alt+F9") == new Shortcut(3, Keys.F9), "shortcut");
         Assert(Shortcut.Parse(new Settings().Shortcut) == new Shortcut(2, Keys.NumPad0), "default talking shortcut");
@@ -30,6 +36,7 @@ internal static class Program
             Assert(Shortcut.Parse($"Ctrl + Numpad {digit}") == keypad && Shortcut.Parse($"Ctrl+NumPad{digit}") == keypad, "keypad shortcut");
             Assert(Shortcut.Parse($"Ctrl+{digit}") == new Shortcut(2, Keys.D0 + digit), "top-row shortcut");
         }
+        CheckDownload().GetAwaiter().GetResult();
         CheckSettings();
         foreach (string bad in new[] { "length", "tool_calls", "" })
             Reject(JsonSerializer.Serialize(new { choices = new[] { new { finish_reason = bad, message = new { content = "Partial" } } } }));
@@ -85,9 +92,15 @@ internal static class Program
         var root = Directory.CreateTempSubdirectory("TalkToMe-check-");
         try
         {
+            var fresh = Settings.Load(root.FullName);
+            Assert(fresh.BundledSpeech && fresh.Translation == "qwen08", "fresh install uses bundled models");
+            fresh.Translation = "transcript";
+            using (var editor = new EnglishEditor(fresh))
+                Assert(editor.EditAsync("Привет", default).GetAwaiter().GetResult() == "Привет", "transcript only");
             string path = Path.Combine(root.FullName, "settings.json");
             File.WriteAllText(path, """{"shortcut":"Ctrl+Alt+F9","localServer":{"executable":"llama-server.exe","modelFile":"model.gguf"}}""");
             var old = Settings.Load(root.FullName);
+            Assert(!old.BundledSpeech && old.Translation == "server", "legacy engine choice");
             Assert(old.LocalServer is { ContextSize: 8192, GpuLayers: "all" } && old.Sounds && old.RecordingMinutes == 5, "old preference defaults");
             old.Prompt = "Custom editing instructions."; old.Glossary = ["CFrame", "Vulkan"];
             old.SetApiKey("example-dummy-key");
@@ -105,6 +118,72 @@ internal static class Program
             throw new Exception("Duplicate shortcuts accepted.");
         }
         finally { root.Delete(recursive: true); }
+    }
+    private sealed class DownloadResponse(byte[] bytes) : System.Net.Http.HttpMessageHandler
+    {
+        public int Requests { get; private set; }
+        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken token)
+        {
+            Requests++;
+            return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                { Content = new System.Net.Http.ByteArrayContent(bytes) });
+        }
+    }
+    private static async Task CheckDownload()
+    {
+        var dir = Directory.CreateTempSubdirectory("TalkToMe-download-");
+        try {
+            byte[] good = [1, 2, 3], bad = [4, 5, 6];
+            var model = new ModelDownload("test.bin", "test/model", "test", good.Length,
+                Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(good)));
+            var progress = new Progress<string>();
+            var handler = new DownloadResponse(good);
+            using var valid = new System.Net.Http.HttpClient(handler);
+            using var corrupt = new System.Net.Http.HttpClient(new DownloadResponse(bad));
+            var path = model.PathIn(dir.FullName);
+            await File.WriteAllBytesAsync(path, bad).ConfigureAwait(false);
+            try {
+                await model.InstallAsync(dir.FullName, progress, default, corrupt).ConfigureAwait(false);
+                throw new Exception("Corrupt download accepted.");
+            } catch (InvalidDataException) { }
+            Assert(File.ReadAllBytes(path).SequenceEqual(bad) && dir.GetFiles().Length == 1, "failed install preserved the previous file");
+            using var cancel = new CancellationTokenSource();
+            cancel.Cancel();
+            try {
+                await model.InstallAsync(dir.FullName, progress, cancel.Token, valid).ConfigureAwait(false);
+                throw new Exception("Cancelled install succeeded.");
+            } catch (OperationCanceledException) { }
+            await model.InstallAsync(dir.FullName, progress, default, valid).ConfigureAwait(false);
+            await model.InstallAsync(dir.FullName, progress, default, valid).ConfigureAwait(false);
+            Assert(handler.Requests == 1 && File.ReadAllBytes(path).SequenceEqual(good), "retry repaired the model and offline reuse succeeded");
+        }
+        finally { dir.Delete(recursive: true); }
+    }
+    private static async Task CheckLocalModels(string directory, string sample, string translation)
+    {
+        var settings = Settings.Defaults(Environment.CurrentDirectory);
+        settings.Translation = translation;
+        settings.Validate();
+        settings.ModelDirectory = Path.GetFullPath(directory);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(25));
+        var token = timeout.Token;
+        foreach (string id in settings.RequiredModels())
+        {
+            var asset = ModelDownload.Get(id);
+            Console.WriteLine($"Installing or verifying {asset.Name}");
+            await asset.InstallAsync(settings.ModelDirectory, new Progress<string>(), token).ConfigureAwait(false);
+        }
+        using var wav = new WaveFileReader(sample);
+        using var pcm = new MemoryStream();
+        wav.CopyTo(pcm);
+        using var recognizer = new Recognizer(settings);
+        string text = await recognizer.RunAsync(pcm.ToArray(), "en", token).ConfigureAwait(false);
+        Console.WriteLine(text);
+        Assert(text.Contains("country", StringComparison.OrdinalIgnoreCase), "bundled Whisper JFK sample");
+        using var translator = new EnglishEditor(settings);
+        string result = await translator.EditAsync("У меня два кота.", token).ConfigureAwait(false);
+        Console.WriteLine(result);
+        Assert(result.Contains("cat", StringComparison.OrdinalIgnoreCase), "bundled Qwen Russian to English");
     }
     private static string Parse(string json)
     { using var doc = JsonDocument.Parse(json); return EnglishEditor.CompleteText(doc.RootElement); }

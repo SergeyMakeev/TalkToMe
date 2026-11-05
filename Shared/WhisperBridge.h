@@ -6,6 +6,7 @@ extern "C" {
 #endif
 void *ttm_open(const char *path, bool metal);
 void ttm_close(void *model);
+void ttm_free_text(char *text);
 void *ttm_new_job(void);
 void ttm_cancel(void *job);
 void ttm_free_job(void *job);

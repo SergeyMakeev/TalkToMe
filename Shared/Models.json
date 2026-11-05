@@ -1,0 +1,37 @@
+{
+  "base": {
+    "name": "ggml-base-q5_1.bin",
+    "repository": "ggerganov/whisper.cpp",
+    "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+    "size": 59707625,
+    "digest": "422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898"
+  },
+  "speech": {
+    "name": "ggml-large-v3-turbo-q5_0.bin",
+    "repository": "ggerganov/whisper.cpp",
+    "revision": "5359861c739e955e79d9a303bcbc70fb988958b1",
+    "size": 574041195,
+    "digest": "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2"
+  },
+  "activity": {
+    "name": "ggml-silero-v5.1.2.bin",
+    "repository": "ggml-org/whisper-vad",
+    "revision": "9ffd54a1e1ee413ddf265af9913beaf518d1639b",
+    "size": 885098,
+    "digest": "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf"
+  },
+  "qwen08": {
+    "name": "Qwen3.5-0.8B-Q4_0.gguf",
+    "repository": "ggml-org/Qwen3.5-0.8B-GGUF",
+    "revision": "807dfd9a6fadbf703207aac3bfb0b2b3040d077c",
+    "size": 563036064,
+    "digest": "57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf"
+  },
+  "qwen2": {
+    "name": "Qwen3.5-2B-Q4_K_M.gguf",
+    "repository": "unsloth/Qwen3.5-2B-GGUF",
+    "revision": "f6d5376be1edb4d416d56da11e5397a961aca8ae",
+    "size": 1280835840,
+    "digest": "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223"
+  }
+}

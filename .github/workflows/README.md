@@ -27,7 +27,7 @@ Pushing the tag starts the same workflow with publishing enabled. Choose either 
 
 | Release asset | Installation |
 | --- | --- |
-| `TalkToMe-Windows-x64.zip` | Extract the whole archive. Install x64 Python 3.11 with the Windows `py` launcher, run `.\setup.ps1` (or `.\setup.ps1 -Cpu`), then open `TalkToMe.cmd`. The app and .NET runtime are bundled. |
+| `TalkToMe-Windows-x64.zip` | Extract the whole archive, open `TalkToMe.exe`, choose speech and optional translation models, and click **Download and save**. The app includes its .NET, Whisper and llama.cpp runtimes. |
 | `TalkToMe-macOS-arm64.dmg` | For Apple silicon. Open the DMG, drag TalkToMe to Applications, and eject the disk image. |
 | `TalkToMe-macOS-x86_64.dmg` | For Intel Macs. Open the DMG, drag TalkToMe to Applications, and eject the disk image. |
 

@@ -10,6 +10,8 @@ internal sealed class SettingsDialog : Form
     private readonly Settings original;
     private readonly Func<Settings, bool> apply;
     private readonly Label feedback = new() { AutoSize = true, ForeColor = Color.Firebrick, MaximumSize = new(590, 0) };
+    private readonly Button save = new() { Text = "Save", AutoSize = true };
+    private CancellationTokenSource? install;
 
     public SettingsDialog(Settings settings, Func<Settings, bool> apply)
     {
@@ -28,12 +30,35 @@ internal sealed class SettingsDialog : Form
         layout.RowStyles.Add(new(SizeType.AutoSize)); layout.RowStyles.Add(new(SizeType.AutoSize));
         layout.Controls.Add(tabs, 0, 0); layout.Controls.Add(feedback, 0, 1);
         var buttons = new FlowLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, FlowDirection = FlowDirection.RightToLeft };
-        var save = new Button { Text = "Save", AutoSize = true };
         var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true };
         buttons.Controls.AddRange([save, cancel]);
         layout.Controls.Add(buttons, 0, 2); Controls.Add(layout);
         AcceptButton = save; CancelButton = cancel;
-        save.Click += (_, _) => Save();
+        save.Click += async (_, _) => await SaveAsync();
+        FormClosing += (_, _) => install?.Cancel();
+
+        Page("Models");
+        var speech = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+        speech.Items.AddRange(["Whisper Base · smaller and faster · 61 MB", "Whisper Large v3 Turbo · 575 MB", "Custom Python / faster-whisper"]);
+        speech.SelectedIndex = !settings.BundledSpeech ? 2 : settings.SpeechModel == "base" ? 0 : 1;
+        Row("Listen with", speech);
+        var translation = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+        string[] ids = ["qwen08", "qwen2", "transcript", "server"];
+        translation.Items.AddRange(["Local Qwen 3.5 · 0.8B · 563 MB", "Local Qwen 3.5 · 2B · 1.28 GB",
+            "Transcript only · keep the spoken language", "Use my own server"]);
+        translation.SelectedIndex = Array.IndexOf(ids, settings.Translation);
+        Row("Translate and edit with", translation);
+        void SetModels(Settings s) {
+            s.BundledSpeech = speech.SelectedIndex != 2;
+            if (s.BundledSpeech) s.SpeechModel = speech.SelectedIndex == 0 ? "base" : "speech";
+            s.Translation = ids[translation.SelectedIndex];
+        }
+        collect.Add(SetModels);
+        var summary = new Label { AutoSize = true, MaximumSize = new(420, 0) };
+        Row("", summary);
+        var verify = new Button { Text = "Verify downloaded models", AutoSize = true };
+        Row("", verify);
+        verify.Click += async (_, _) => await SaveAsync(verifyOnly: true);
 
         Page("Dictation");
         var microphone = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
@@ -57,13 +82,16 @@ internal sealed class SettingsDialog : Form
         Check("Play start and end tones", settings.Sounds, (s,v) => s.Sounds = v);
 
         Page("Speech");
+        int firstSpeechField = collect.Count;
         PathValue("Whisper model folder", settings.WhisperDirectory, true, (s,v) => s.WhisperDirectory = v);
         PathValue("Python interpreter", settings.Python, false, (s,v) => s.Python = v);
         Choice("Recognition device", settings.Device, ["cpu","cuda","auto"], (s,v) => s.Device = v);
         Choice("Compute precision", settings.ComputeType, ["auto","default","int8","int8_float16","int8_float32","float16","float32","bfloat16"], (s,v) => s.ComputeType = v, editable: true);
         PathValue("CUDA libraries folder (optional)", settings.CudaLibraryDirectory, true, (s,v) => s.CudaLibraryDirectory = v);
+        CollectWhen(firstSpeechField, s => !s.BundledSpeech);
 
         Page("Server");
+        int firstServerField = collect.Count;
         var url = TextValue("Server URL (including /v1)", settings.ServerUrl, (s,v) => s.ServerUrl = v);
         TextValue("Served model or alias", settings.Model, (s,v) => s.Model = v);
         var password = new TextBox { UseSystemPasswordChar = true, PlaceholderText = "Leave blank to keep the current key" };
@@ -84,8 +112,9 @@ internal sealed class SettingsDialog : Form
         var manage = new CheckBox { Text = "Start a local llama-server when needed", AutoSize = true,
             Checked = local != null && new Uri(settings.ServerUrl).IsLoopback };
         Row("", manage);
-        var exe = PathValue("llama-server executable", local?.Executable ?? "", false);
-        var model = PathValue("Qwen GGUF", local?.ModelFile ?? "", false);
+        var exe = PathValue("Custom llama-server (optional)", local?.Executable ?? "", false);
+        exe.PlaceholderText = "Use the included llama-server";
+        var model = PathValue("Translation model (GGUF)", local?.ModelFile ?? "", false);
         var context = Number("Context size", local?.ContextSize ?? 8192, 512, int.MaxValue);
         var layers = TextValue("GPU layers (all or a number)", local?.GpuLayers ?? "all");
         void EnableLocal() { foreach (var control in new Control[] { exe.Parent!, model.Parent!, context, layers }) control.Enabled = manage.Checked; }
@@ -96,6 +125,7 @@ internal sealed class SettingsDialog : Form
                 throw new InvalidDataException("Use an HTTP loopback URL to start a local server.");
             s.LocalServer = manage.Checked ? new(exe.Text.Trim(), model.Text.Trim(), (int)context.Value, layers.Text.Trim()) : null;
         });
+        CollectWhen(firstServerField, s => s.Translation == "server");
 
         Page("Editing");
         var prompt = Multiline("Editing instructions", string.IsNullOrWhiteSpace(settings.Prompt) ? EnglishEditor.Instruction : settings.Prompt, 170);
@@ -105,9 +135,40 @@ internal sealed class SettingsDialog : Form
         collect.Add(s => { s.Prompt = prompt.Text.Trim().ReplaceLineEndings("\n") == EnglishEditor.Instruction.ReplaceLineEndings("\n") ? "" : prompt.Text.Trim();
             s.Glossary = glossary.Lines.Select(x => x.Trim()).Where(x => x.Length > 0).ToArray(); });
         Number("Temperature", (decimal)settings.Temperature, 0, 2, (s,v) => s.Temperature = (double)v, decimals: 2);
+        var speechPage = tabs.TabPages[2];
+        var serverPage = tabs.TabPages[3];
+        void ShowChoices()
+        {
+            void ShowPage(TabPage page, bool visible)
+            {
+                if (visible && !tabs.TabPages.Contains(page)) tabs.TabPages.Insert(tabs.TabPages.Count - 1, page);
+                if (!visible) tabs.TabPages.Remove(page);
+            }
+            ShowPage(speechPage, speech.SelectedIndex == 2);
+            ShowPage(serverPage, ids[translation.SelectedIndex] == "server");
+            var selection = settings.Draft();
+            SetModels(selection);
+            var models = selection.RequiredModels().Select(ModelDownload.Get).ToArray();
+            long bytes = models.Where(m => !m.Installed(settings.ModelDirectory)).Sum(m => m.Size);
+            summary.Text = bytes > 0 ? $"Download {Math.Ceiling(bytes / 1e6):N0} MB once to use these models offline." :
+                models.Length > 0 ? "Selected models are installed and ready for offline use." : "";
+            save.Text = bytes > 0 ? "Download and save" : "Save";
+            verify.Visible = bytes == 0 && models.Length > 0;
+        }
+        speech.SelectedIndexChanged += (_, _) => ShowChoices();
+        translation.SelectedIndexChanged += (_, _) => ShowChoices();
+        ShowChoices();
+        if (settings.RequiredModels().All(id => ModelDownload.Get(id).Installed(settings.ModelDirectory)))
+            tabs.SelectedIndex = 1;
     }
 
     private sealed record InputDevice(int Id, string Label) { public override string ToString() => Label; }
+    private void CollectWhen(int start, Func<Settings, bool> enabled)
+    {
+        var fields = collect.GetRange(start, collect.Count - start);
+        collect.RemoveRange(start, fields.Count);
+        collect.Add(s => { if (enabled(s)) foreach (var field in fields) field(s); });
+    }
     private void Page(string name)
     {
         var page = new TabPage(name) { AutoScroll = true };
@@ -173,10 +234,23 @@ internal sealed class SettingsDialog : Form
         draft.Validate();
         return draft;
     }
-    private void Save()
+    private async Task SaveAsync(bool verifyOnly = false)
     {
+        if (install != null) return;
         try {
-            if (apply(ReadForm())) DialogResult = DialogResult.OK;
-        } catch (Exception e) { feedback.Text = e.Message; }
+            var draft = ReadForm();
+            using var cancel = new CancellationTokenSource();
+            install = cancel;
+            tabs.Enabled = save.Enabled = false;
+            var progress = new Progress<string>(s => { if (!IsDisposed && install == cancel) feedback.Text = s; });
+            foreach (var model in draft.RequiredModels().Select(ModelDownload.Get))
+                if (verifyOnly || !model.Installed(draft.ModelDirectory))
+                    await model.InstallAsync(draft.ModelDirectory, progress, cancel.Token);
+            cancel.Token.ThrowIfCancellationRequested();
+            if (verifyOnly) feedback.Text = "Selected models verified.";
+            else if (apply(draft)) DialogResult = DialogResult.OK;
+        } catch (OperationCanceledException) { }
+        catch (Exception e) { if (!IsDisposed) feedback.Text = e.Message; }
+        finally { install = null; if (!IsDisposed) tabs.Enabled = save.Enabled = true; }
     }
 }
