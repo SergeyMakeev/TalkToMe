@@ -76,6 +76,7 @@ if args.count == 2 && args[1] == "--check-local-translation" {
         let editor = EnglishEditor()
         do {
             let p = Preferences()
+            print("Testing bundled translation with \(p.useMetal ? "Metal" : "CPU").")
             _ = try await ModelDownload.get(p.translation.rawValue).install()
             let text = try await editor.edit("У меня два кота.", p)
             guard text.lowercased().contains("cat") else { throw Failure("Unexpected local translation: \(text)") }

@@ -79,7 +79,10 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         var arguments = ["-m", p.gguf, "--alias", p.model, "--host", base.host!.trimmingCharacters(in: CharacterSet(charactersIn: "[]")),
             "--port", String(base.port ?? 80), "--ctx-size", String(p.contextSize), "--parallel", "1", "-ngl", p.gpuLayers,
             "--reasoning", "off", "--no-mmproj", "--log-disable"]
-        if p.translation.bundled { arguments += ["--offline", "--no-webui"] }
+        if p.translation.bundled {
+            arguments += ["--offline", "--no-webui"]
+            if !p.useMetal { arguments += ["--device", "none"] }
+        }
         process.arguments = arguments
         var env = ProcessInfo.processInfo.environment
         if !key.isEmpty { env["LLAMA_API_KEY"] = key }
@@ -164,9 +167,15 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
     }
     nonisolated static func completeText(_ data: Data) throws -> String {
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        guard let choices = json?["choices"] as? [[String: Any]], choices.count == 1, choices[0]["finish_reason"] as? String == "stop",
+        guard let choices = json?["choices"] as? [[String: Any]], choices.count == 1,
               let message = choices[0]["message"] as? [String: Any], let raw = message["content"] as? String else {
             throw Failure("Incomplete llama-server response. Retry or copy the transcript.")
+        }
+        if choices[0]["finish_reason"] as? String == "length" {
+            throw Failure("The translation reached its output limit. Retry or copy the transcript.")
+        }
+        guard choices[0]["finish_reason"] as? String == "stop" else {
+            throw Failure("The translator stopped before completing the text. Retry or copy the transcript.")
         }
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         let forbidden = CharacterSet.controlCharacters.subtracting(CharacterSet(charactersIn: "\t\r\n"))

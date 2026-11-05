@@ -1,5 +1,6 @@
 import AppKit
 import CryptoKit
+import Metal
 import Security
 
 struct Failure: LocalizedError {
@@ -42,7 +43,10 @@ struct Preferences: Codable, Equatable {
     var whisper = ModelDownload.catalog["base"]?.path ?? ""
     var vad = ModelDownload.catalog["activity"]?.path ?? ""
     #if arch(arm64)
-    var useMetal = true
+    // Virtual Macs can advertise a Metal device that cannot run the inference kernels correctly.
+    var useMetal = MTLCreateSystemDefaultDevice().map {
+        $0.supportsFamily(.apple7) && !$0.name.localizedCaseInsensitiveContains("paravirtual")
+    } ?? false
     #else
     var useMetal = false
     #endif
