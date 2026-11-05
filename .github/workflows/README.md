@@ -28,10 +28,28 @@ Pushing the tag starts the same workflow with publishing enabled. Choose either 
 | Release asset | Installation |
 | --- | --- |
 | `TalkToMe-Windows-x64.zip` | Extract the whole archive. Install x64 Python 3.11 with the Windows `py` launcher, run `.\setup.ps1` (or `.\setup.ps1 -Cpu`), then open `TalkToMe.cmd`. The app and .NET runtime are bundled. |
-| `TalkToMe-macOS-arm64.zip` | For Apple silicon. Extract and move `TalkToMe.app` to Applications. |
-| `TalkToMe-macOS-x86_64.zip` | For Intel Macs. Extract and move `TalkToMe.app` to Applications. |
+| `TalkToMe-macOS-arm64.dmg` | For Apple silicon. Open the DMG, drag TalkToMe to Applications, and eject the disk image. |
+| `TalkToMe-macOS-x86_64.dmg` | For Intel Macs. Open the DMG, drag TalkToMe to Applications, and eject the disk image. |
 
 See the [app README](../../README.md) for microphone permissions, speech models, and llama-server setup.
+
+## Apple signing for public distribution
+
+By default the disk images contain ad-hoc signed apps for personal use. Gatekeeper can ask users to approve the app in **Privacy & Security**. For normal first launch on other Macs, enable Developer ID signing and Apple notarization for versioned builds.
+
+1. With an Apple Developer Program membership, export a **Developer ID Application** certificate and its private key as a password-protected `.p12` from Keychain Access. Create a **team App Store Connect API key** authorized to submit software for notarization. Keep its issuer ID, key ID and downloaded `.p8` file. [Apple’s notarization instructions](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)
+2. In the GitHub repository, open **Settings → Secrets and variables → Actions → Secrets** and add the following repository secrets.
+
+   | Secret | Value |
+   | --- | --- |
+   | `MACOS_DEVELOPER_ID_P12` | Base64 contents of the exported `.p12`. On a Mac, `base64 -i DeveloperID.p12 \| pbcopy` copies this for pasting into the secret field. |
+   | `MACOS_P12_PASSWORD` | Password used when exporting the `.p12` |
+   | `MACOS_NOTARY_KEY_P8` | Entire text of the team API private key, including its BEGIN and END lines |
+   | `MACOS_NOTARY_KEY_ID` | App Store Connect key ID |
+   | `MACOS_NOTARY_ISSUER_ID` | App Store Connect issuer ID |
+
+3. On the **Variables** tab, set the repository variable `MACOS_NOTARIZE_RELEASES` to `true`. Run a versioned rehearsal with **Publish** cleared. Each Mac job signs the app with the hardened runtime and microphone entitlement, signs the disk image, submits it to Apple, staples the accepted ticket, and checks the image and installed app with Gatekeeper. A signing or notarization failure stops publication.
+4. Once the rehearsal passes, run **Publish release** again with **Publish** selected. Regular push and pull-request builds continue to produce personal-use DMGs.
 
 ## Retry a failed release
 

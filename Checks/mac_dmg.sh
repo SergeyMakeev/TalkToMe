@@ -21,4 +21,7 @@ ditto "$mount/TalkToMe.app" "$installed"
 hdiutil detach "$mount" >/dev/null
 attached=false
 codesign --verify --deep --strict --verbose=2 "$installed"
+if [[ "${NOTARIZE:-false}" == true ]]; then
+    spctl --assess --type execute --verbose=4 "$installed"
+fi
 "$installed/Contents/MacOS/TalkToMe" --self-test

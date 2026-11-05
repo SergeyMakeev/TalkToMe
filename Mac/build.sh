@@ -36,4 +36,4 @@ codesign --force --sign - "$out/TalkToMe.app"
 codesign --verify --strict "$out/TalkToMe.app"
 python3 -m venv "$out/dmg-tools"
 "$out/dmg-tools/bin/python" -m pip --disable-pip-version-check install --quiet 'dmgbuild==1.6.7'
-"$out/dmg-tools/bin/dmgbuild" -s Mac/dmg-settings.py -D "app=$out/TalkToMe.app" TalkToMe "$out/TalkToMe-macOS-$(uname -m).dmg"
+if [[ "${1:-}" != --defer-dmg ]]; then bash Mac/package-dmg.sh; fi
