@@ -8,6 +8,7 @@ import AVFoundation
     @Published private(set) var status = "Ready. Focus a text field and use the recording shortcut."
     @Published private(set) var source = ""
     @Published var english = ""
+    @Published private(set) var insertionDetails = ""
     @Published var settingsOpen = false
     @Published private(set) var accessibility = AccessibilityAccess.current()
     var refreshMenu: (() -> Void)?
@@ -133,6 +134,7 @@ import AVFoundation
                 if let recovery { targetLookup = Task { await recovery.resolve(destination) } }
             }
             audio.removeAll()
+            insertionDetails = ""
             source = ""; english = ""
             phase = .recording
             status = "Recording · \(prefs.toggle ? "Press the shortcut again" : "Release the shortcut") to finish."
@@ -211,8 +213,11 @@ import AVFoundation
                 if p.review { status = "Review mode is on. Ready to review and copy." }
                 else if !insert { status = "Reprocessed. Use Copy result to insert it." }
                 else if let destination = target {
-                    let outcome = try await destination.insert(text, valid: { self.target != nil && self.revision == id })
-                    if revision == id { status = outcome.message }
+                    insertionDetails = "TalkToMe \(AccessibilityAccess.version)\n"
+                    let outcome = try await destination.insert(text, valid: { self.target != nil && self.revision == id }, report: {
+                        if self.revision == id { self.insertionDetails += $0 + "\n" }
+                    })
+                    if revision == id { insertionDetails += "Outcome: \(outcome.message)\n"; status = outcome.message }
                 } else { status = InsertionOutcome.blocked(targetProblem ?? .focusChanged).message }
             } catch { if revision == id { status = error.localizedDescription } }
         }
@@ -288,7 +293,7 @@ import AVFoundation
             // AppKit runs a special termination loop after terminateLater. Reply
             // through that run loop, without depending on MainActor task scheduling.
             RunLoop.main.perform(inModes: [.common, .modalPanel]) {
-                MainActor.assumeIsolated { completion() }
+                MainActor.assumeIsolated { ClipboardLease.finishBeforeQuit(completion) }
             }
             CFRunLoopWakeUp(CFRunLoopGetMain())
         }

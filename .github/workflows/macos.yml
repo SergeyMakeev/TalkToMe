@@ -78,6 +78,10 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+      - name: Check insertion verification and clipboard preservation
+        run: |
+          swiftc Mac/TextInsertion.swift Mac/ClipboardPaste.swift Checks/MacInsertionChecks.swift Checks/MacInsertionMain.swift -o "$RUNNER_TEMP/insertion-checks"
+          "$RUNNER_TEMP/insertion-checks"
       - name: Build and sign the app bundle
         env:
           APP_VERSION: ${{ inputs.version }}

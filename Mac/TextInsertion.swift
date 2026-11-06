@@ -4,7 +4,7 @@ import Carbon.HIToolbox
 enum InsertionProblem: Error, Equatable {
     case accessibility, eventPermission, noApplication, ownWindow, terminal, secureInput
     case focusUnavailable(Int32), unsupportedField, disabledField, focusChanged, shortcutHeld
-    case rejected(Int32), multiline, eventCreation, interrupted
+    case rejected(Int32), multiline, eventCreation, interrupted, clipboardUnavailable, clipboardChanged
 
     var message: String {
         switch self {
@@ -24,6 +24,8 @@ enum InsertionProblem: Error, Equatable {
         case .multiline: return "This editor needs pasted text for line breaks or tabs. Use Copy result."
         case .eventCreation: return "macOS could not create the text-input events. Use Copy result."
         case .interrupted: return "Typing stopped after partial insertion. Check the editor; the full result is still available here."
+        case .clipboardUnavailable: return "Could not preserve the clipboard for pasting. Use Copy result."
+        case .clipboardChanged: return "The clipboard changed before paste. Use Copy result."
         }
     }
 }
@@ -67,9 +69,24 @@ enum InsertionOutcome: Equatable {
     var message: String {
         switch self {
         case .inserted: return "Text inserted into the original field."
-        case .sent: return "Text sent to the original field. If the editor ignored it, use Copy result."
+        case .sent: return "Insertion requested, but the editor did not confirm the text. Check it before using Copy result."
         case .blocked(let problem): return "Ready to copy. \(problem.message)"
         }
+    }
+}
+
+struct FieldText: Equatable {
+    let value: String
+    let selection: NSRange?
+    var summary: String { "length=\(value.utf16.count), selection=\(selection.map { "\($0.location):\($0.length)" } ?? "unavailable")" }
+    func confirms(_ text: String, after: FieldText) -> Bool {
+        let count = value.utf16.count
+        guard let range = selection, range.location >= 0, range.location <= count,
+              range.length >= 0, range.length <= count - range.location else { return false }
+        let expected = (value as NSString).replacingCharacters(in: range, with: text)
+        guard after.value == expected else { return false }
+        // Replacing a selection with identical text needs a caret change as proof.
+        return expected != value || (after.selection != nil && after.selection != selection)
     }
 }
 
@@ -83,8 +100,27 @@ enum InsertionOutcome: Equatable {
     var replaceSelection: (String) -> AXError
     var canPostEvents: () -> Bool
     var sendUnicode: ([UniChar]) -> Bool
+    var preferPaste = false
+    var paste: ((String) async throws -> InsertionOutcome)?
+    var readText: () -> FieldText? = { nil }
+    var report: (String) -> Void = { _ in }
     var prepareText: (String) -> String = { $0 }
     var pause: (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) }
+
+    private func confirm(_ text: String, before: FieldText?, valid: () -> Bool) async throws -> InsertionOutcome {
+        try Task.checkCancellation()
+        guard let before, before.selection != nil else { report("Verification unavailable: no readable initial text/selection."); return .sent }
+        for attempt in 0..<11 {
+            try Task.checkCancellation()
+            guard valid(), focused(), !secureInput() else { report("Verification stopped: target changed."); return .sent }
+            if let after = readText() {
+                if before.confirms(text, after: after) { report("Verified text change: \(after.summary)"); return .inserted }
+                if attempt == 10 { report("Text change not confirmed: \(after.summary)") }
+            } else { report("Verification unavailable: target text cannot be read."); return .sent }
+            if attempt < 10 { try await pause(100_000_000) }
+        }
+        return .sent
+    }
 
     func insert(_ text: String, valid: () -> Bool) async throws -> InsertionOutcome {
         for _ in 0..<200 {
@@ -99,9 +135,20 @@ enum InsertionOutcome: Equatable {
         guard valid(), focused() else { return .blocked(.focusChanged) }
         guard !secureInput() else { return .blocked(.secureInput) }
         let text = prepareText(text)
+        let before = readText()
+        report("Before insertion: \(before?.summary ?? "unavailable"); input length=\(text.utf16.count)")
+        if preferPaste, let paste {
+            report("Delivery: clipboard + Command+V")
+            guard canPostEvents() else { return .blocked(.eventPermission) }
+            let outcome = try await paste(text)
+            if case .blocked = outcome { return outcome }
+            return try await confirm(text, before: before, valid: valid)
+        }
         if selectionWritable() {
+            report("Delivery: AXSelectedText")
             let result = replaceSelection(text)
-            if result == .success { return .inserted }
+            report("AX write result: \(result.rawValue)")
+            if result == .success { return try await confirm(text, before: before, valid: valid) }
             if result == .apiDisabled { return .blocked(.accessibility) }
             // A timeout may mean the write was applied. Do not type a duplicate.
             guard result == .attributeUnsupported || result == .notImplemented else {
@@ -112,6 +159,7 @@ enum InsertionOutcome: Equatable {
         // AXValue. Many browser/Electron editors expose that value as read-only.
         guard !text.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else { return .blocked(.multiline) }
         guard canPostEvents() else { return .blocked(.eventPermission) }
+        report("Delivery: Unicode keyboard events")
         var chunks = [[UniChar]]()
         var chunk = [UniChar]()
         for scalar in text.unicodeScalars {
@@ -130,6 +178,6 @@ enum InsertionOutcome: Equatable {
             guard sendUnicode(chunk) else { return .blocked(index == 0 ? .eventCreation : .interrupted) }
             if index + 1 < chunks.count { try await pause(10_000_000) }
         }
-        return .sent
+        return try await confirm(text, before: before, valid: valid)
     }
 }

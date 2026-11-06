@@ -30,6 +30,7 @@ import AVFoundation
     private let menu = NSMenu()
     private var terminating = false
     private var readyToTerminate = false
+    private var quitPasteboardCheck: NSPasteboard?
     func applicationDidFinishLaunching(_ notification: Notification) {
         controller = Dictation()
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 690, height: 480),
@@ -66,6 +67,13 @@ import AVFoundation
                 }
                 print("Result window, Settings sheet and menu-bar icon appeared.")
                 fflush(stdout)
+                let board = NSPasteboard.withUniqueName()
+                board.setString("Clipboard before Quit", forType: .string)
+                guard let lease = ClipboardLease.place("Pending paste", on: board) else {
+                    fputs("Could not prepare the clipboard shutdown check.\n", stderr); exit(1)
+                }
+                self.quitPasteboardCheck = board
+                lease.didDispatch()
                 self.controller.settingsOpen = false
                 scheduleCheckQuit()
             }
@@ -109,6 +117,13 @@ import AVFoundation
         return .terminateLater
     }
     func applicationWillTerminate(_ notification: Notification) {
+        if let board = quitPasteboardCheck {
+            guard board.string(forType: .string) == "Clipboard before Quit" else {
+                fputs("Quit did not restore its pending pasteboard.\n", stderr); exit(1)
+            }
+            board.releaseGlobally()
+            print("Pending pasteboard restored before Quit.")
+        }
         if CommandLine.arguments.contains("--check-window") || CommandLine.arguments.contains("--check-shutdown") {
             print("Application shutdown completed after releasing its models.")
         }

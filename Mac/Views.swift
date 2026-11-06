@@ -11,6 +11,9 @@ struct Panel: View {
                 Button("Settings…") { app.configure() }.disabled(app.phase != .idle)
             }
             Text(app.status).foregroundStyle(.secondary).textSelection(.enabled)
+            if !app.insertionDetails.isEmpty {
+                Button("Copy insertion details") { app.copy(app.insertionDetails) }.font(.caption)
+            }
             if !app.prefs.review && !app.accessibility.trusted {
                 HStack {
                     Text("macOS has not confirmed access for this running copy.")

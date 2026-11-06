@@ -139,6 +139,8 @@ final class Capture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
 struct Destination {
     let pid: pid_t
     let field: AXUIElement
+    let bundleIdentifier: String
+    let preferPaste: Bool
     private static func attribute(_ el: AXUIElement, _ key: String) -> CFTypeRef? {
         var value: CFTypeRef?
         return AXUIElementCopyAttributeValue(el, key as CFString, &value) == .success ? value : nil
@@ -190,7 +192,10 @@ struct Destination {
             guard let parent = attribute(node, kAXParentAttribute), CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
             ancestor = (parent as! AXUIElement)
         }
-        return .success(Self(pid: app.processIdentifier, field: el))
+        let electron = app.bundleURL.map {
+            FileManager.default.fileExists(atPath: $0.appendingPathComponent("Contents/Frameworks/Electron Framework.framework").path)
+        } ?? false
+        return .success(Self(pid: app.processIdentifier, field: el, bundleIdentifier: bundle, preferPaste: electron))
     }
     // Construct this while the original app is still focused. Do not retarget a
     // different app/window while its renderer builds the accessibility tree.
@@ -237,7 +242,21 @@ struct Destination {
             (right == nil || right!.isWhitespace) ? " " + text : text
     }
 
-    @MainActor func insert(_ english: String, valid: () -> Bool) async throws -> InsertionOutcome {
+    private func readText() -> FieldText? {
+        if let count = Self.attribute(field, kAXNumberOfCharactersAttribute) as? Int, count > 1_000_000 { return nil }
+        guard let value = Self.attribute(field, kAXValueAttribute) as? String, value.utf16.count <= 1_000_000 else { return nil }
+        var selection: NSRange?
+        if let raw = Self.attribute(field, kAXSelectedTextRangeAttribute), CFGetTypeID(raw) == AXValueGetTypeID() {
+            var range = CFRange()
+            if AXValueGetValue(raw as! AXValue, .cfRange, &range), range.location >= 0, range.length >= 0 {
+                selection = NSRange(location: range.location, length: range.length)
+            }
+        }
+        return FieldText(value: value, selection: selection)
+    }
+
+    @MainActor func insert(_ english: String, valid: @escaping () -> Bool, report: @escaping (String) -> Void = { _ in }) async throws -> InsertionOutcome {
+        report("Target: \(bundleIdentifier); Electron: \(preferPaste); typing permission: \(CGPreflightPostEventAccess())")
         let delivery = TextInsertion(
             modifiersReleased: { CGEventSource.flagsState(.combinedSessionState).intersection([.maskCommand,.maskAlternate,.maskControl,.maskShift]).isEmpty },
             focused: { stillFocused() },
@@ -258,6 +277,18 @@ struct Destination {
                 }
                 return true
             },
+            preferPaste: preferPaste,
+            paste: { text in
+                await ClipboardPaste.send(text, pid: pid) {
+                    if Task.isCancelled || !valid() || !stillFocused() { return .focusChanged }
+                    if IsSecureEventInputEnabled() { return .secureInput }
+                    if !CGEventSource.flagsState(.combinedSessionState).intersection([.maskCommand,.maskAlternate,.maskControl,.maskShift]).isEmpty { return .shortcutHeld }
+                    if !CGPreflightPostEventAccess() { return .eventPermission }
+                    return nil
+                }
+            },
+            readText: { readText() },
+            report: report,
             prepareText: { atCaret($0) })
         return try await delivery.insert(english, valid: valid)
     }
