@@ -36,8 +36,13 @@ final class ParakeetWorker {
             let status = poll(&descriptor, 1, 50)
             if status < 0 && errno != EINTR { throw Failure("Could not read Parakeet’s response.") }
             if status > 0 {
-                guard let data = try output.read(upToCount: 65536), !data.isEmpty else { throw Failure("Parakeet stopped unexpectedly.") }
-                pending.append(data)
+                // One POSIX read returns currently available bytes; never wait for
+                // a full Foundation read buffer and lose the deadline/cancel poll.
+                var buffer = [UInt8](repeating: 0, count: 65536)
+                let count = Darwin.read(output.fileDescriptor, &buffer, buffer.count)
+                if count < 0 && errno == EINTR { continue }
+                guard count > 0 else { throw Failure("Parakeet stopped unexpectedly.") }
+                pending.append(contentsOf: buffer.prefix(count))
                 guard pending.count <= 8 * 1024 * 1024 else { throw Failure("Parakeet returned an oversized response.") }
             }
         }
@@ -68,6 +73,11 @@ final class ParakeetWorker {
                     worker.standardError = FileHandle.nullDevice
                     try worker.run()
                     process = worker; input = stdin.fileHandleForWriting; output = stdout.fileHandleForReading
+                    // A cancelled/crashed child must make writes fail, not deliver
+                    // SIGPIPE to the UI process.
+                    guard fcntl(stdin.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1) != -1 else {
+                        throw Failure("Could not configure the Parakeet connection.")
+                    }
                     job.onCancel { if worker.isRunning { kill(worker.processIdentifier, SIGKILL) } }
                     try send(["model": p.whisper, "gpu": gpu])
                     let ready = try reply(job, timeout: 180)

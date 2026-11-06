@@ -20,6 +20,22 @@ internal sealed record ModelDownload(string Name, string Repository, string Revi
 
     internal async Task InstallAsync(string directory, IProgress<string> progress, CancellationToken token, HttpClient? client = null)
     {
+        for (int attempt = 0; ; attempt++)
+        {
+            token.ThrowIfCancellationRequested();
+            try { await InstallAttemptAsync(directory, progress, token, client).ConfigureAwait(false); return; }
+            catch (Exception error) when (attempt < 2 && !token.IsCancellationRequested &&
+                (error is HttpIOException or TaskCanceledException || error is HttpRequestException http &&
+                (http.StatusCode == null || (int)http.StatusCode is 408 or 429 or 500 or 502 or 503 or 504)))
+            {
+                progress.Report($"Download interrupted; retrying {Name} ({attempt + 1}/2)…");
+                await Task.Delay(TimeSpan.FromSeconds((attempt + 1) * 2), token).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async Task InstallAttemptAsync(string directory, IProgress<string> progress, CancellationToken token, HttpClient? client)
+    {
         Directory.CreateDirectory(directory);
         string path = PathIn(directory);
         bool Matches(byte[] hash) => Convert.ToHexString(hash).Equals(Digest, StringComparison.OrdinalIgnoreCase);

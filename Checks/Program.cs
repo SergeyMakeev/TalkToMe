@@ -48,6 +48,11 @@ internal static class Program
             try { GpuCheck.Run(modelDirectory, audioSample).GetAwaiter().GetResult(); return 0; }
             catch (Exception error) { Console.Error.WriteLine(error); return 1; }
         }
+        if (args is ["--gpu-check", var newModels, var newSample, var speechModel, var translator])
+        {
+            try { GpuCheck.Run(newModels, newSample, speechModel, translator).GetAwaiter().GetResult(); return 0; }
+            catch (Exception error) { Console.Error.WriteLine(error); return 1; }
+        }
         if (args is ["--field"]) { RunField(); return 0; }
         Assert(Shortcut.Parse("Ctrl+Alt+F9") == new Shortcut(3, Keys.F9), "shortcut");
         Assert(Shortcut.Parse(new Settings().Shortcut) == new Shortcut(2, Keys.NumPad0), "default talking shortcut");
@@ -142,12 +147,14 @@ internal static class Program
         }
         finally { root.Delete(recursive: true); }
     }
-    private sealed class DownloadResponse(byte[] bytes) : System.Net.Http.HttpMessageHandler
+    private sealed class DownloadResponse(byte[] bytes, bool transientFailure = false) : System.Net.Http.HttpMessageHandler
     {
         public int Requests { get; private set; }
         protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken token)
         {
             Requests++;
+            if (transientFailure && Requests == 1)
+                return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable));
             return Task.FromResult(new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK)
                 { Content = new System.Net.Http.ByteArrayContent(bytes) });
         }
@@ -179,6 +186,12 @@ internal static class Program
             await model.InstallAsync(dir.FullName, progress, default, valid).ConfigureAwait(false);
             await model.InstallAsync(dir.FullName, progress, default, valid).ConfigureAwait(false);
             Assert(handler.Requests == 1 && File.ReadAllBytes(path).SequenceEqual(good), "retry repaired the model and offline reuse succeeded");
+            await File.WriteAllBytesAsync(path, bad).ConfigureAwait(false);
+            var interrupted = new DownloadResponse(good, transientFailure: true);
+            using var retry = new System.Net.Http.HttpClient(interrupted);
+            await model.InstallAsync(dir.FullName, progress, default, retry).ConfigureAwait(false);
+            Assert(interrupted.Requests == 2 && File.ReadAllBytes(path).SequenceEqual(good) && dir.GetFiles().Length == 1,
+                "transient download failure retries and removes partial files");
         }
         finally { dir.Delete(recursive: true); }
     }

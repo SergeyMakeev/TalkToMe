@@ -15,6 +15,7 @@
     <EmbeddedResource Include="../Shared/TranslateGemmaPrompt.txt" LogicalName="TalkToMe.TranslateGemmaPrompt.txt" />
     <EmbeddedResource Include="../Shared/LocalEditing.json" LogicalName="TalkToMe.LocalEditing.json" />
     <EmbeddedResource Include="../Shared/Models.json" LogicalName="TalkToMe.Models.json" />
+    <Content Include="../Shared/GemmaTerms.txt;../Shared/GemmaNotice.txt;../Shared/ModelNotices.txt" Link="licenses/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <Content Include="../build/engines/**/*" Exclude="../build/engines/**/TalkToMeSpeech.dll" Link="engines/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <EmbeddedResource Include="Sounds/*.wav" />
     <EmbeddedResource Include="Icons/*.ico" />

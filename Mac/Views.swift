@@ -179,11 +179,15 @@ struct PreferencesView: View {
                     }
                 }.tabItem { Text("Dictation") }
                 Form {
-                    path("Whisper GGML model", $p.whisper)
-                    path("Speech detector", $p.vad)
-                    Text("Leave the speech detector empty to disable silence filtering.").foregroundStyle(.secondary)
+                    path("Speech model", $p.whisper)
+                    if !p.parakeet {
+                        path("Speech detector", $p.vad)
+                        Text("Leave the speech detector empty to disable silence filtering.").foregroundStyle(.secondary)
+                        Stepper("CPU threads · \(p.threads)", value: $p.threads, in: 1...128)
+                    } else {
+                        Text("Parakeet detects the language automatically and manages its CPU threads. Whisper’s speech detector and glossary prompt are not used.").foregroundStyle(.secondary)
+                    }
                     Toggle("Use Metal acceleration", isOn: $p.useMetal)
-                    Stepper("CPU threads · \(p.threads)", value: $p.threads, in: 1...128)
                     Button("Use recommended speech models") {
                         p.whisper = ModelDownload.catalog["base"]?.path ?? ""
                         p.vad = ModelDownload.catalog["activity"]?.path ?? ""

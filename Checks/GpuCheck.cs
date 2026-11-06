@@ -11,9 +11,10 @@ internal static class GpuCheck
         using var child = Process.GetProcessById(id!.Value);
         child.Kill(); child.WaitForExit();
     }
-    public static async Task Run(string directory, string sample)
+    public static async Task Run(string directory, string sample, string speechModel = "base", string translation = "qwen2")
     {
         var settings = Settings.Defaults(Environment.CurrentDirectory);
+        settings.SpeechModel = speechModel; settings.Translation = translation; settings.Validate();
         settings.ModelDirectory = Path.GetFullPath(directory);
         using var wav = new WaveFileReader(sample);
         using var buffer = new MemoryStream();

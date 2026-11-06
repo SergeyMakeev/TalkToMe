@@ -25,6 +25,7 @@ cp "$out/engines/TalkToMeParakeetHost" "$out/engines/"*.dylib "$app/Helpers/"
 for helper in "$app/Helpers/"*.dylib "$app/Helpers/TalkToMeParakeetHost"; do codesign --force --sign - "$helper"; done
 codesign --force --sign - "$app/Helpers/llama-server"
 cp "$out/engines/"*.txt "$app/Resources/"
+cp Shared/{GemmaTerms.txt,GemmaNotice.txt,ModelNotices.txt} "$app/Resources/"
 cp Mac/Info.plist "$app/"
 if [[ -n "${APP_VERSION:-}" ]]; then
     plutil -replace CFBundleShortVersionString -string "$APP_VERSION" "$app/Info.plist"

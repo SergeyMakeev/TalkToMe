@@ -14,7 +14,8 @@ internal sealed class ProcessingMetrics(Settings settings, double audioSeconds, 
     public string OS { get; } = RuntimeInformation.OSDescription;
     public string CPU { get; } = ReadCpu();
     public int LogicalProcessors { get; } = Environment.ProcessorCount;
-    public int? SpeechThreads { get; } = settings.BundledSpeech ? Math.Clamp(Environment.ProcessorCount / 2, 1, 8) : null;
+    public int? SpeechThreads { get; } = !settings.BundledSpeech ? null : settings.SpeechModel == "parakeet"
+        ? Math.Clamp(Environment.ProcessorCount, 1, 8) : Math.Clamp(Environment.ProcessorCount / 2, 1, 8);
     public DateTimeOffset Started { get; } = DateTimeOffset.UtcNow;
     public double AudioSeconds { get; } = audioSeconds;
     public string Language { get; } = language;
