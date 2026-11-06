@@ -9,6 +9,11 @@ on:
         description: Test an existing Apple silicon release on macOS 15 and 26 instead of rebuilding
         required: false
         type: string
+      quarantine_release:
+        description: Mark the installed test copy as a browser download to exercise Gatekeeper
+        required: false
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       version:
@@ -42,6 +47,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.test_release }}
+          QUARANTINE_RELEASE: ${{ inputs.quarantine_release }}
         run: bash Checks/mac_release_launch.sh
       - uses: actions/upload-artifact@v6
         if: always()

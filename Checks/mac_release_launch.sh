@@ -22,7 +22,14 @@ app_pid() {
     done
 }
 cleanup() {
+    local result=$?
     local pid
+    if (( result != 0 )); then
+        while read -r pid; do
+            [[ -z "$pid" ]] || sample "$pid" 3 -file "$out/sample-$pid.txt" || true
+        done < <(app_pid)
+        log show --last 3m --style compact --info --predicate 'eventMessage CONTAINS[c] "TalkToMe"' > "$out/launch-policy.txt" 2>&1 || true
+    fi
     while read -r pid; do [[ -z "$pid" ]] || kill "$pid" 2>/dev/null || true; done < <(app_pid)
     if [[ -n "$launcher" ]]; then kill "$launcher" 2>/dev/null || true; fi
     if [[ "$attached" == true ]]; then hdiutil detach "$mount" >/dev/null || return; fi
@@ -38,7 +45,15 @@ ditto "$mount/TalkToMe.app" "$installed"
 hdiutil detach "$mount" >/dev/null
 attached=false
 codesign --verify --deep --strict --verbose=2 "$installed"
+codesign --display --verbose=4 "$installed" > "$out/signature.txt" 2>&1
 otool -L "$installed/Contents/MacOS/TalkToMe" > "$out/libraries.txt"
+if [[ "${QUARANTINE_RELEASE:-false}" == true ]]; then
+    # CLI downloads are not quarantined. Apply the first-launch marker only to
+    # this disposable test copy; no policy or approval settings are changed.
+    quarantine="0083;$(printf '%x' "$(date +%s)");TalkToMeLaunchCheck;$(uuidgen)"
+    xattr -w com.apple.quarantine "$quarantine" "$installed"
+fi
+xattr -p com.apple.quarantine "$installed" > "$out/quarantine.txt" 2>&1 || true
 touch "$out/stdout.txt" "$out/stderr.txt"
 open -n -W -a "$installed" --stdout "$out/stdout.txt" --stderr "$out/stderr.txt" --args --check-window &
 launcher=$!
@@ -53,9 +68,6 @@ for i in {1..45}; do
     fi
     sleep 1
 done
-while read -r pid; do
-    [[ -z "$pid" ]] || sample "$pid" 3 -file "$out/sample-$pid.txt" || true
-done < <(app_pid)
 cat "$out/stdout.txt" "$out/stderr.txt"
 echo 'The installed release did not finish its launch check within 45 seconds.' >&2
 exit 1
