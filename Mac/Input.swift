@@ -279,7 +279,7 @@ struct Destination {
             },
             preferPaste: preferPaste,
             paste: { text in
-                await ClipboardPaste.send(text, pid: pid) {
+                await ClipboardPaste.send(text, pid: pid, report: report) {
                     if Task.isCancelled || !valid() || !stillFocused() { return .focusChanged }
                     if IsSecureEventInputEnabled() { return .secureInput }
                     if !CGEventSource.flagsState(.combinedSessionState).intersection([.maskCommand,.maskAlternate,.maskControl,.maskShift]).isEmpty { return .shortcutHeld }

@@ -15,33 +15,34 @@ import Carbon.HIToolbox
     private init(board: NSPasteboard, backup: [NSPasteboardItem]) {
         self.board = board; self.backup = backup
     }
-    static func place(_ text: String, on board: NSPasteboard = .general) -> ClipboardLease? {
-        guard active == nil else { return nil }
+    static func place(_ text: String, on board: NSPasteboard = .general, report: (String) -> Void = { _ in }) -> ClipboardLease? {
+        func rejected(_ reason: String) -> ClipboardLease? { report("Clipboard: " + reason); return nil }
+        guard active == nil else { return rejected("another paste is still pending") }
         let original = board.changeCount
         var backup = [NSPasteboardItem]()
         var bytes = 0
         for item in board.pasteboardItems ?? [] {
             let copy = NSPasteboardItem()
             for type in item.types {
-                guard let data = item.data(forType: type) else { return nil }
+                guard let data = item.data(forType: type) else { return rejected("cannot preserve format \(type.rawValue)") }
                 bytes += data.count
-                guard bytes <= 16 * 1024 * 1024, copy.setData(data, forType: type) else { return nil }
+                guard bytes <= 16 * 1024 * 1024, copy.setData(data, forType: type) else { return rejected("backup exceeds limit or format cannot be copied") }
             }
             backup.append(copy)
         }
-        guard board.changeCount == original else { return nil }
+        guard board.changeCount == original else { return rejected("changed while preparing backup") }
         let lease = ClipboardLease(board: board, backup: backup)
         let item = NSPasteboardItem()
-        guard item.setString(text, forType: .string), item.setString(lease.token, forType: marker) else { return nil }
+        guard item.setString(text, forType: .string), item.setString(lease.token, forType: marker) else { return rejected("cannot prepare temporary text") }
         // Tell cooperating clipboard managers this is temporary input data.
         item.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
         let cleared = board.clearContents()
         guard board.writeObjects([item]) else {
             if board.changeCount == cleared, !backup.isEmpty { _ = board.writeObjects(backup) }
-            return nil
+            return rejected("write failed")
         }
         lease.generation = board.changeCount
-        guard lease.isCurrent else { return nil }
+        guard lease.isCurrent else { return rejected("temporary clipboard ownership not confirmed") }
         active = lease
         return lease
     }
@@ -66,9 +67,9 @@ import Carbon.HIToolbox
 }
 
 @MainActor enum ClipboardPaste {
-    static func send(_ text: String, pid: pid_t, allowed: () -> InsertionProblem?) async -> InsertionOutcome {
+    static func send(_ text: String, pid: pid_t, report: (String) -> Void, allowed: () -> InsertionProblem?) async -> InsertionOutcome {
         if let problem = allowed() { return .blocked(problem) }
-        guard let lease = ClipboardLease.place(text) else { return .blocked(.clipboardUnavailable) }
+        guard let lease = ClipboardLease.place(text, report: report) else { return .blocked(.clipboardUnavailable) }
         defer { lease.restore() }
         if let problem = allowed() { return .blocked(problem) }
         guard lease.isCurrent else { return .blocked(.clipboardChanged) }

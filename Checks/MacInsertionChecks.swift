@@ -106,7 +106,7 @@ import Cocoa
         first.setData(Data([1, 2, 3, 4]), forType: rich)
         second.setData(Data([5, 6, 7]), forType: .png)
         board.writeObjects([first, second])
-        guard let lease = ClipboardLease.place("Dictated text", on: board) else { throw Failure("Could not create private pasteboard lease.") }
+        guard let lease = ClipboardLease.place("Dictated text", on: board, report: { print($0) }) else { throw Failure("Could not create private pasteboard lease.") }
         try require(lease.isCurrent && board.string(forType: .string) == "Dictated text", "temporary paste text is available")
         try require(ClipboardLease.place("Overlapping paste", on: board) == nil, "overlapping paste cannot capture temporary text as a backup")
         lease.restore()
