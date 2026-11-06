@@ -2,12 +2,14 @@
 
 Each stable version produces one public GitHub Release with downloads for Windows x64, Apple silicon, and Intel Macs. Use a stable version tag such as `v1.2.3`. Each of the three numbers must be between 0 and 65534, without leading zeros.
 
+Publish a stable release with all three platforms by default, including for Mac-specific fixes. Use a preview or a platform-only release only when explicitly requested. Do not publish until all three packages have passed their checks.
+
 ## Publish from the GitHub UI
 
 1. Open **Actions → Publish release → Run workflow**. [Open the workflow](https://github.com/SergeyMakeev/TalkToMe/actions/workflows/release.yml)
 2. Select the branch containing the commit you want to ship (normally **main**). Enter the new tag in **Version tag**, for example `v1.2.3`.
 3. Leave **Publish to GitHub Releases after all checks pass** checked and click **Run workflow**. To rehearse, clear the checkbox. A rehearsal runs the same builds and archive checks, and leaves the downloads in the Actions run.
-4. Wait for the **release** job to finish. It tags the exact commit that was built, generates release notes, uploads all three archives to a draft, and publishes them together. [View releases](https://github.com/SergeyMakeev/TalkToMe/releases)
+4. Wait for the **release** job to finish. It tags the exact commit that was built, uses `.github/releases/<tag>.md` when present (otherwise generated notes), uploads all three archives to a draft, and publishes them together. [View releases](https://github.com/SergeyMakeev/TalkToMe/releases)
 
 Running this workflow requires write access to the repository. The publishing job uses the built-in GitHub Actions token. Branch pushes and pull requests run the usual build checks.
 
@@ -27,7 +29,7 @@ Pushing the tag starts the same workflow with publishing enabled. Choose either 
 
 | Release asset | Installation |
 | --- | --- |
-| `TalkToMe-Windows-x64.zip` | Extract the whole archive, open `TalkToMe.exe`, choose speech and optional translation models, and click **Download and save**. The app includes its .NET, Whisper and llama.cpp runtimes. |
+| `TalkToMe-Windows-x64.zip` | Extract the whole archive, open `TalkToMe.exe`, choose speech and optional translation models, and click **Download and save**. The app includes its .NET, Whisper, Parakeet and llama.cpp runtimes. |
 | `TalkToMe-macOS-arm64.dmg` | For Apple silicon. Open the DMG, drag TalkToMe to Applications, and eject the disk image. |
 | `TalkToMe-macOS-x86_64.dmg` | For Intel Macs. Open the DMG, drag TalkToMe to Applications, and eject the disk image. |
 

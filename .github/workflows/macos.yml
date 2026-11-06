@@ -108,6 +108,7 @@ jobs:
           build/mac/TalkToMe.app/Contents/MacOS/TalkToMe --check-local-translation qwen4
           build/mac/TalkToMe.app/Contents/MacOS/TalkToMe --check-local-translation translategemma
       - name: Download Parakeet and verify CPU, Metal fallback, cancellation and recovery
+        timeout-minutes: 15
         run: build/mac/TalkToMe.app/Contents/MacOS/TalkToMe --check-parakeet build/mac/whisper.cpp/samples/jfk.wav
       - name: Open the result window and first-run Settings
         timeout-minutes: 2

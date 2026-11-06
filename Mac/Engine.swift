@@ -1,6 +1,8 @@
 import Foundation
 
-final class SpeechJob {
+// The native cancellation flag is atomic; Swift state and the process callback
+// are protected by lock when accessed from the UI and inference queues.
+final class SpeechJob: @unchecked Sendable {
     let pointer = ttm_new_job()!
     private let lock = NSLock()
     private var cancelled = false
