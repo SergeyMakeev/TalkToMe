@@ -33,6 +33,71 @@ import Cocoa
     func require(_ condition: Bool, _ message: String) throws {
         guard condition else { throw Failure("Insertion check failed: \(message)") }
     }
+    // A renderer may expose no focused element until AXManualAccessibility has
+    // been requested and its accessibility tree reaches the browser process.
+    do {
+        var requests = 0, reads = 0, waits = 0
+        let recovery = FocusRecovery<String>(current: { true }, read: {
+            reads += 1
+            return reads == 1 ? .failure(.focusUnavailable(AXError.noValue.rawValue)) : .success("original Slack composer")
+        }, enable: { requests += 1; return true }, pause: { _ in waits += 1 })
+        let result = await recovery.resolve(.failure(.focusUnavailable(AXError.noValue.rawValue)))
+        try require(result == .success("original Slack composer") && requests == 1 && waits == 2, "delayed Electron focus becomes available")
+    }
+    do {
+        var requests = 0
+        let recovery = FocusRecovery<String>(current: { true }, read: { .success("unexpected") },
+            enable: { requests += 1; return true }, pause: { _ in })
+        let result = await recovery.resolve(.success("TextEdit field"))
+        try require(result == .success("TextEdit field") && requests == 0, "working native focus needs no compatibility request")
+        for problem in [InsertionProblem.accessibility, .secureInput, .terminal, .disabledField, .focusChanged,
+                        .focusUnavailable(AXError.failure.rawValue)] {
+            let result = await recovery.resolve(.failure(problem))
+            try require(result == .failure(problem) && requests == 0, "focus recovery preserves blocked target: \(problem)")
+        }
+    }
+    do {
+        var waits = 0
+        let recovery = FocusRecovery<String>(current: { true }, read: { .success("unexpected") },
+            enable: { false }, pause: { _ in waits += 1 })
+        let original: Result<String, InsertionProblem> = .failure(.focusUnavailable(AXError.noValue.rawValue))
+        let result = await recovery.resolve(original)
+        try require(result == original && waits == 0, "unsupported compatibility attribute is not an access grant")
+    }
+    do {
+        var current = true, reads = 0
+        let recovery = FocusRecovery<String>(current: { current }, read: { reads += 1; return .success("wrong target") },
+            enable: { true }, pause: { _ in current = false })
+        let result = await recovery.resolve(.failure(.unsupportedField))
+        try require(result == .failure(.focusChanged) && reads == 0, "app or window switch prevents retargeting during recovery")
+    }
+    do {
+        var reads = 0
+        let missing: Result<String, InsertionProblem> = .failure(.focusUnavailable(AXError.noValue.rawValue))
+        let recovery = FocusRecovery<String>(current: { true }, read: { reads += 1; return missing },
+            enable: { true }, pause: { _ in })
+        let result = await recovery.resolve(missing)
+        try require(result == missing && reads == 6, "missing focus has a bounded retry instead of blind typing")
+        try require(!InsertionProblem.focusUnavailable(AXError.noValue.rawValue).message.contains("Accessibility"), "missing field is not reported as missing permission")
+    }
+    do {
+        var reads = 0, requests = 0
+        let recovery = FocusRecovery<String>(current: { true }, read: { reads += 1; return .success("unexpected") },
+            enable: { requests += 1; return true }, pause: { _ in throw CancellationError() })
+        let result = await recovery.resolve(.failure(.unsupportedField))
+        try require(result == .failure(.focusChanged) && reads == 0, "cancellation while waiting stops focus reads")
+        let pending = Task { @MainActor in await recovery.resolve(.failure(.unsupportedField)) }
+        pending.cancel()
+        let cancelled = await pending.value
+        try require(cancelled == .failure(.focusChanged) && requests == 1 && reads == 0, "cancelled capture cannot enable or retarget an app")
+    }
+    do {
+        var reads = 0
+        let recovery = FocusRecovery<String>(current: { true }, read: { reads += 1; return .failure(.secureInput) },
+            enable: { true }, pause: { _ in })
+        let result = await recovery.resolve(.failure(.unsupportedField))
+        try require(result == .failure(.secureInput) && reads == 1, "newly exposed secure field stays blocked")
+    }
     // Editors can expose a read-only AXValue and still accept keyboard input.
     // Delivery must not depend on permission to overwrite the whole document.
     do {
@@ -107,5 +172,5 @@ import Cocoa
         } catch is CancellationError { }
         try require(probe.chunks.isEmpty && probe.writes.isEmpty, "cancelled session sends nothing")
     }
-    print("Mac insertion policy checks passed: Unicode fallback, selection writes, permissions, held shortcuts, focus changes and cancellation.")
+    print("Mac insertion policy checks passed: Electron focus recovery, Unicode fallback, selection writes, permissions, held shortcuts, focus changes and cancellation.")
 }

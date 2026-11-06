@@ -16,6 +16,8 @@ import AVFoundation
     private let editor = EnglishEditor()
     private var mic: Capture?
     private var target: Destination?
+    private var targetApp: pid_t?
+    private var targetLookup: Task<Result<Destination, InsertionProblem>, Never>?
     private var targetProblem: InsertionProblem?
     private var audio: [Float] = []
     private var language = ""
@@ -39,9 +41,8 @@ import AVFoundation
             object: nil, queue: .main) { [weak self] notification in
                 let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
                 MainActor.assumeIsolated {
-                    if let target = self?.target, target.pid != app?.processIdentifier {
-                        self?.target = nil
-                        self?.targetProblem = .focusChanged
+                    if let pid = self?.targetApp, pid != app?.processIdentifier {
+                        self?.clearTarget(problem: .focusChanged)
                     }
                 }
             }
@@ -106,7 +107,12 @@ import AVFoundation
         let capture = Capture()
         let id = UUID()
         refreshPermissions()
+        let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier
         let destination = prefs.review ? nil : Destination.capture()
+        let recovery = destination.flatMap { result -> FocusRecovery<Destination>? in
+            guard case .failure = result, let pid else { return nil }
+            return Destination.recovery(for: pid)
+        }
         do {
             try prefs.validate()
             try keys.enableCancel(prefs.cancelShortcut)
@@ -117,12 +123,14 @@ import AVFoundation
             }
             revision = id
             mic = capture
-            target = nil; targetProblem = nil
+            clearTarget()
             if let destination {
+                targetApp = pid
                 switch destination {
                 case .success(let field): target = field
                 case .failure(let problem): targetProblem = problem
                 }
+                if let recovery { targetLookup = Task { await recovery.resolve(destination) } }
             }
             audio.removeAll()
             source = ""; english = ""
@@ -151,6 +159,7 @@ import AVFoundation
             audio = try stopMicrophone()
             process(insert: true)
         } catch {
+            clearTarget()
             keys.disableCancel()
             phase = .idle
             status = error.localizedDescription
@@ -168,9 +177,10 @@ import AVFoundation
         let work = SpeechJob()
         job = work
         let p = prefs
+        let lookup = targetLookup
         task = Task {
             defer {
-                if revision == id { keys.disableCancel(); target = nil; targetProblem = nil; phase = .idle; task = nil; job = nil }
+                if revision == id { keys.disableCancel(); clearTarget(); phase = .idle; task = nil; job = nil }
             }
             do {
                 if source.isEmpty || p.language != language {
@@ -184,6 +194,19 @@ import AVFoundation
                 let text = try await editor.edit(source, p)
                 try Task.checkCancellation()
                 english = text
+                if let lookup {
+                    let resolved = await lookup.value
+                    try Task.checkCancellation()
+                    // Switching apps cancels the lookup and clears targetApp,
+                    // even if a successful result was already queued.
+                    if targetApp != nil {
+                        switch resolved {
+                        case .success(let field): target = field; targetProblem = nil
+                        case .failure(let problem): targetProblem = problem
+                        }
+                    }
+                    targetLookup = nil
+                }
                 refreshPermissions()
                 if p.review { status = "Review mode is on. Ready to review and copy." }
                 else if !insert { status = "Reprocessed. Use Copy result to insert it." }
@@ -194,12 +217,16 @@ import AVFoundation
             } catch { if revision == id { status = error.localizedDescription } }
         }
     }
+    private func clearTarget(problem: InsertionProblem? = nil) {
+        targetLookup?.cancel(); targetLookup = nil
+        target = nil; targetApp = nil; targetProblem = problem
+    }
     func cancel() {
         guard phase != .idle else { return }
         revision = UUID()
         job?.cancel(); task?.cancel(); task = nil; job = nil
         _ = try? stopMicrophone()
-        target = nil; targetProblem = nil; audio.removeAll(); source = ""; english = ""
+        clearTarget(); audio.removeAll(); source = ""; english = ""
         keys.disableCancel()
         phase = .idle; status = "Cancelled."
     }

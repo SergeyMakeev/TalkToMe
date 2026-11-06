@@ -13,7 +13,9 @@ enum InsertionProblem: Error, Equatable {
         case .noApplication, .ownWindow: return "Click a text field in another app before starting dictation."
         case .terminal: return "Automatic insertion is disabled in terminal fields. Use Copy result."
         case .secureInput: return "Secure keyboard input is active. Leave the password field or close the app holding secure input, then try again."
-        case .focusUnavailable(let code): return "Could not read the focused text field (macOS error \(code)). Check Accessibility access and focus a text field."
+        case .focusUnavailable(let code) where code == AXError.noValue.rawValue:
+            return "The target app did not expose its focused text field. Click inside the editor and try again."
+        case .focusUnavailable(let code): return "Could not read the target app's focused text field (macOS error \(code)). Click inside the editor and try again."
         case .unsupportedField: return "The focused item did not expose an editable text field. Click inside the editor before dictating."
         case .disabledField: return "The target text field is disabled."
         case .focusChanged: return "The target app or text field changed during dictation. Keep it focused until insertion finishes."
@@ -23,6 +25,38 @@ enum InsertionProblem: Error, Equatable {
         case .eventCreation: return "macOS could not create the text-input events. Use Copy result."
         case .interrupted: return "Typing stopped after partial insertion. Check the editor; the full result is still available here."
         }
+    }
+}
+
+// Electron apps may withhold their web accessibility tree until an assistive
+// app requests it. Wait briefly for that tree, without blocking audio capture.
+@MainActor struct FocusRecovery<Field> {
+    var current: () -> Bool
+    var read: () -> Result<Field, InsertionProblem>
+    var enable: () -> Bool
+    var pause: (UInt64) async throws -> Void = { try await Task.sleep(nanoseconds: $0) }
+
+    private func retryable(_ result: Result<Field, InsertionProblem>) -> Bool {
+        guard case .failure(let problem) = result else { return false }
+        switch problem {
+        case .unsupportedField: return true
+        case .focusUnavailable(let code):
+            return [AXError.noValue.rawValue, AXError.attributeUnsupported.rawValue, AXError.cannotComplete.rawValue].contains(code)
+        default: return false
+        }
+    }
+    func resolve(_ initial: Result<Field, InsertionProblem>) async -> Result<Field, InsertionProblem> {
+        guard !Task.isCancelled, current() else { return .failure(.focusChanged) }
+        guard retryable(initial), enable() else { return initial }
+        var result = initial
+        for _ in 0..<6 {
+            do { try await pause(100_000_000) }
+            catch { return .failure(.focusChanged) }
+            guard !Task.isCancelled, current() else { return .failure(.focusChanged) }
+            result = read()
+            if !retryable(result) { return result }
+        }
+        return result
     }
 }
 

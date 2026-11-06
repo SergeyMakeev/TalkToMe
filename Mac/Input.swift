@@ -192,6 +192,28 @@ struct Destination {
         }
         return .success(Self(pid: app.processIdentifier, field: el))
     }
+    // Construct this while the original app is still focused. Do not retarget a
+    // different app/window while its renderer builds the accessibility tree.
+    @MainActor static func recovery(for pid: pid_t) -> FocusRecovery<Self> {
+        let application = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(application, 0.25)
+        let window = attribute(application, kAXFocusedWindowAttribute)
+        return FocusRecovery(
+            current: {
+                guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return false }
+                if let window {
+                    guard let now = attribute(application, kAXFocusedWindowAttribute), CFEqual(window, now) else { return false }
+                }
+                return true
+            },
+            read: { capture() },
+            enable: {
+                // Electron's documented assistive-technology API. Unsupported
+                // applications simply reject it; never change VoiceOver settings.
+                // https://www.electronjs.org/docs/latest/tutorial/accessibility#macos
+                AXUIElementSetAttributeValue(application, "AXManualAccessibility" as CFString, kCFBooleanTrue) == .success
+            })
+    }
     func stillFocused() -> Bool {
         guard case .success(let current) = Self.capture() else { return false }
         return current.pid == pid && CFEqual(current.field, field)
