@@ -4,6 +4,11 @@ on:
     branches: ['**']
   pull_request:
   workflow_dispatch:
+    inputs:
+      test_release:
+        description: Test an existing Apple silicon release on macOS 15 and 26 instead of rebuilding
+        required: false
+        type: string
   workflow_call:
     inputs:
       version:
@@ -23,7 +28,29 @@ on:
 permissions:
   contents: read
 jobs:
+  release-launch:
+    if: github.event_name == 'workflow_dispatch' && inputs.test_release != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-26]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+      - name: Open the installed release through Launch Services
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.test_release }}
+        run: bash Checks/mac_release_launch.sh
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: launch-diagnostics-${{ matrix.runner }}
+          path: build/mac-launch/
+          if-no-files-found: warn
   build:
+    if: inputs.test_release == ''
     strategy:
       fail-fast: false
       matrix:
