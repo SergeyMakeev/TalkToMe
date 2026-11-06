@@ -1,6 +1,6 @@
 # Publishing a TalkToMe release
 
-Each version produces one public GitHub Release with downloads for Windows x64, Apple silicon, and Intel Macs. Use a stable version tag such as `v1.2.3`. Each of the three numbers must be between 0 and 65534, without leading zeros.
+Each stable version produces one public GitHub Release with downloads for Windows x64, Apple silicon, and Intel Macs. Use a stable version tag such as `v1.2.3`. Each of the three numbers must be between 0 and 65534, without leading zeros.
 
 ## Publish from the GitHub UI
 
@@ -32,6 +32,12 @@ Pushing the tag starts the same workflow with publishing enabled. Choose either 
 | `TalkToMe-macOS-x86_64.dmg` | For Intel Macs. Open the DMG, drag TalkToMe to Applications, and eject the disk image. |
 
 See the [app README](../../README.md) for microphone permissions, speech models, and llama-server setup.
+
+## Mac previews
+
+For a Mac-only fix, run **Actions → macOS build → Run workflow**, select the source branch, leave **test_release** empty, and enter an optional app version such as `0.2.2`. This builds and checks both Mac architectures without rebuilding the Windows GPU engines. The workflow uploads DMGs as Actions artifacts; it does not publish a release.
+
+To share a preview, publish only artifacts whose architecture-specific build and installer checks passed. Point its tag to the exact commit recorded in that run, use a separate tag such as `macos-v0.2.2-preview.1`, and mark it as a **pre-release**, not the latest stable release. This tag prefix does not trigger the stable `v*` release workflow. Identify any missing architecture or unfinished physical-Mac tests in the release notes. Do not replace assets from an already published version with a different build.
 
 ## Apple signing for public distribution
 

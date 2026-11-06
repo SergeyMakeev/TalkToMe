@@ -6,6 +6,8 @@ Download a versioned build from [GitHub Releases](https://github.com/SergeyMakee
 
 ## Install on macOS
 
+The insertion fixes and MacBook shortcuts below are available in the [macOS 0.2.2 preview](https://github.com/SergeyMakeev/TalkToMe/releases/tag/macos-v0.2.2-preview.1). The latest stable release remains v0.2.1.
+
 1. On macOS 13 or later, download **TalkToMe-macOS-arm64.dmg** for Apple silicon or **TalkToMe-macOS-x86_64.dmg** for Intel. Open the disk image, drag **TalkToMe** onto **Applications**, eject the image, and open the installed app from Applications. For a CI build, extract the Actions artifact to get the DMG. For the **v0.1.0** release, extract the ZIP and move **TalkToMe.app** to Applications. [Releases](https://github.com/SergeyMakeev/TalkToMe/releases) · [Mac builds](https://github.com/SergeyMakeev/TalkToMe/actions/workflows/macos.yml)
 2. Launch TalkToMe. In **Settings → Dictation**, grant **Microphone** access for recording and **Accessibility** access for insertion into other apps. Select a microphone or follow the system default.
 3. In **Models**, choose a listening model and an output option, then **Download and save**. The default Whisper Base and Qwen 3.5 0.8B downloads total about 624 MB. Choose **Transcript only** to keep the spoken language and download just Whisper and its speech detector (61 MB).
