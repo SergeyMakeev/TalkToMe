@@ -18,6 +18,8 @@ The Mac app checks that the original editable field still has focus before repla
 
 “Text inserted” means TalkToMe verified the expected change in the editor. An accepted write or dispatched paste without readable confirmation is reported as unverified; it is never automatically retried. **Copy insertion details** records the app, delivery method, permission state, character counts, selection offsets and verification result. It does not copy document contents or dictated text into the diagnostics.
 
+If macOS asks for clipboard access, allow it so TalkToMe can preserve the existing clipboard when pasting. If reading the clipboard is denied or fails, TalkToMe leaves its contents untouched and keeps the dictation result available to copy.
+
 For Electron apps such as Slack, TalkToMe requests the app's accessibility tree when its focused editor is initially unavailable, then retries briefly while recording continues. It still checks the original app and window, rejects terminal and secure fields, and confirms the captured field before inserting. A missing focused field is reported separately from a missing macOS permission.
 
 If transcription works but insertion does not, check the status below the shortcut in the result window. **Enable insertion…** opens the Accessibility permission settings. If TalkToMe is already enabled there but the app reports missing access after an update, remove it from the list, add the installed `/Applications/TalkToMe.app` again, and restart TalkToMe. Test in a new TextEdit document. **Review each result before inserting** leaves every result for manual copying; **Retry processing** also leaves the revised result for manual copying to avoid inserting a duplicate.

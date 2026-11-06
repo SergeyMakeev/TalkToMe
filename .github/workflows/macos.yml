@@ -19,7 +19,7 @@ on:
         type: boolean
         default: false
       apple_silicon_only:
-        description: Build only Apple silicon on macOS 26 when macOS 15 runners are busy
+        description: Use one macOS 26 Apple silicon runner for builds or release checks
         required: false
         type: boolean
         default: false
@@ -51,7 +51,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-15, macos-26]
+        runner: ${{ fromJSON(inputs.apple_silicon_only && '["macos-26"]' || '["macos-15", "macos-26"]') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 8
     steps:
