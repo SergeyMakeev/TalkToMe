@@ -80,7 +80,7 @@ final class ParakeetWorker {
                     }
                     job.onCancel { if worker.isRunning { kill(worker.processIdentifier, SIGKILL) } }
                     try send(["model": p.whisper, "gpu": gpu])
-                    let ready = try reply(job, timeout: 180)
+                    let ready = try reply(job, timeout: gpu ? 60 : 180)
                     guard ready["ready"] as? Bool == true, ready["backend"] as? String == (gpu ? "Metal" : "CPU") else {
                         throw Failure("Parakeet could not start its selected backend.")
                     }
@@ -91,7 +91,7 @@ final class ParakeetWorker {
                 let samples = pcm.map { Int16(max(-32768, min(32767, $0 * 32768))).littleEndian }
                 let bytes = samples.withUnsafeBytes { Data($0) }
                 try send(["pcm": bytes.base64EncodedString(), "language": p.language])
-                let result = try reply(job, timeout: max(300, Double(pcm.count) / 16000 * 8))
+                let result = try reply(job, timeout: max(gpu ? 60 : 300, Double(pcm.count) / 16000 * (gpu ? 4 : 8)))
                 try job.checkCancellation()
                 guard let text = result["text"] as? String else { throw Failure("Parakeet returned an invalid result.") }
                 return text.trimmingCharacters(in: .whitespacesAndNewlines)
