@@ -26,6 +26,11 @@ internal static class Program
             try { EditingCheck.RunModels(modelDir, modelId).GetAwaiter().GetResult(); return 0; }
             catch (Exception error) { Console.Error.WriteLine(error); return 1; }
         }
+        if (args is ["--translation-check", var cpuModelDir, var cpuModelId, "cpu"])
+        {
+            try { EditingCheck.RunModels(cpuModelDir, cpuModelId, gpu: false).GetAwaiter().GetResult(); return 0; }
+            catch (Exception error) { Console.Error.WriteLine(error); return 1; }
+        }
         if (args.Length is 3 or 4 && args[0] == "--benchmark")
         {
             if (args.Length == 4 && args[3] is not ("portable" or "cpu" or "auto")) throw new ArgumentException("Use --benchmark model-directory sample.wav [auto|cpu|portable].");

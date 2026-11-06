@@ -47,12 +47,14 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
     {
         bool defaults = string.IsNullOrWhiteSpace(settings.Prompt);
         string instruction = defaults ? Instruction : settings.Prompt;
-        if (settings.LocalTranslation) instruction += "\n" + LocalEditing.GetProperty("instruction").GetString();
+        if (settings.LocalTranslation) instruction += "\n" + LocalEditing.GetProperty(defaults ? "instruction" : "custom_instruction").GetString();
         var messages = new List<object> { new { role = "system", content = instruction } };
         // Tiny 0.8B tends to copy examples verbatim. Larger models benefit from them.
         if (settings.LocalTranslation && settings.Translation != "qwen08" && defaults)
             messages.AddRange(LocalEditing.GetProperty("examples").EnumerateArray().Select(x => (object)x));
-        messages.Add(new { role = "user", content = JsonSerializer.Serialize(new { transcript, glossary = settings.Glossary }, TranscriptJson) });
+        string user = JsonSerializer.Serialize(new { glossary = settings.Glossary, transcript }, TranscriptJson);
+        if (settings.LocalTranslation && defaults) user = LocalEditing.GetProperty("user_prefix").GetString() + user;
+        messages.Add(new { role = "user", content = user });
         var body = new Dictionary<string, object> {
             ["model"] = model, ["messages"] = messages,
             ["chat_template_kwargs"] = new { enable_thinking = false },

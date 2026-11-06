@@ -87,7 +87,7 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         if p.translation.bundled {
             guard let file = Bundle.main.url(forResource: "LocalEditing", withExtension: "json"),
                   let loaded = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any],
-                  let suffix = loaded["instruction"] as? String else { throw Failure("The app is missing its editing format.") }
+                  let suffix = loaded[defaults ? "instruction" : "custom_instruction"] as? String else { throw Failure("The app is missing its editing format.") }
             format = loaded
             instruction += "\n" + suffix
         }
@@ -96,7 +96,8 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         if p.translation.bundled && p.translation != .qwen08 && defaults,
            let examples = format["examples"] as? [[String: String]] { messages += examples }
         let user = try JSONSerialization.data(withJSONObject: ["transcript": transcript, "glossary": p.glossary], options: [.sortedKeys])
-        messages.append(["role": "user", "content": String(decoding: user, as: UTF8.self)])
+        let prefix = defaults ? (format["user_prefix"] as? String ?? "") : ""
+        messages.append(["role": "user", "content": prefix + String(decoding: user, as: UTF8.self)])
         var body: [String: Any] = ["model": p.model, "temperature": p.temperature, "stream": false,
             "chat_template_kwargs": ["enable_thinking": false], "max_tokens": min(4096, max(160, transcript.utf16.count + 96)),
             "messages": messages]

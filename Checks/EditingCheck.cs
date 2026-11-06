@@ -43,6 +43,9 @@ internal static class EditingCheck
             settings.Prompt = "Custom instructions.";
             body = JsonSerializer.SerializeToElement(EnglishEditor.RequestBody("Test", settings, model));
             Assert(body.GetProperty("messages").GetArrayLength() == 2, "custom prompt excludes examples");
+            Assert(!body.GetProperty("messages")[0].GetProperty("content").GetString()!.Contains("English"), "custom editing language preserved");
+            using (var user = JsonDocument.Parse(body.GetProperty("messages")[1].GetProperty("content").GetString()!))
+                Assert(user.RootElement.GetProperty("transcript").GetString() == "Test", "custom editing receives dictation data");
             settings.Translation = "server";
             body = JsonSerializer.SerializeToElement(EnglishEditor.RequestBody("Test", settings, model));
             Assert(!body.TryGetProperty("response_format", out _) && body.GetProperty("messages")[0].GetProperty("content").GetString() == settings.Prompt,
@@ -50,10 +53,11 @@ internal static class EditingCheck
         }
         Console.WriteLine("Structured editing response and request checks passed.");
     }
-    internal static async Task RunModels(string directory, string model)
+    internal static async Task RunModels(string directory, string model, bool gpu = true)
     {
         var settings = Settings.Defaults(Environment.CurrentDirectory);
         settings.ModelDirectory = Path.GetFullPath(directory); settings.Translation = model;
+        settings.UseGpu = gpu;
         settings.Validate();
         if (!settings.LocalTranslation) throw new ArgumentException("Choose a bundled translator.");
         await ModelDownload.Get(model).InstallAsync(settings.ModelDirectory, new Progress<string>(), default);
