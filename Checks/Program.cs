@@ -122,6 +122,9 @@ internal static class Program
         {
             var fresh = Settings.Load(root.FullName);
             Assert(fresh.BundledSpeech && fresh.Translation == "qwen2", "fresh install uses bundled models");
+            File.Copy(Path.Combine(Environment.CurrentDirectory, "settings.example.json"), Path.Combine(root.FullName, "settings.example.json"));
+            var packaged = Settings.Load(root.FullName);
+            Assert(packaged.BundledSpeech && packaged.Translation == "qwen2", "packaged first-run settings use Qwen 2B");
             fresh.Translation = "transcript";
             using (var editor = new EnglishEditor(fresh))
                 Assert(editor.EditAsync("Привет", default).GetAwaiter().GetResult() == "Привет", "transcript only");

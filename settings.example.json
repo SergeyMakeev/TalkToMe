@@ -1,7 +1,7 @@
 {
   "bundledSpeech": true,
   "useGpu": true,
-  "translation": "qwen08",
+  "translation": "qwen2",
   "serverUrl": "http://127.0.0.1:8080/v1",
   "model": "dictation",
   "localServer": null,
