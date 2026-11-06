@@ -11,11 +11,11 @@ cleanup() {
 }
 trap cleanup EXIT
 for mode in loaded cancelled; do
-    extra=()
-    if [[ "$mode" == cancelled ]]; then extra+=(--cancel-inference); fi
+    arguments=(--check-shutdown "$@")
+    if [[ "$mode" == cancelled ]]; then arguments+=(--cancel-inference); fi
     # No CI credentials reach the app, or a possible OS crash report.
     env -i HOME="$HOME" PATH=/usr/bin:/bin:/usr/sbin:/sbin TMPDIR="$TMPDIR" \
-        "$app" --check-shutdown "$@" "${extra[@]}" > "$work/$mode.log" 2>&1 &
+        "$app" "${arguments[@]}" > "$work/$mode.log" 2>&1 &
     pid=$!
     for i in {1..90}; do
         if ! kill -0 "$pid" 2>/dev/null; then break; fi
