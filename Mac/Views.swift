@@ -11,6 +11,13 @@ struct Panel: View {
                 Button("Settings…") { app.configure() }.disabled(app.phase != .idle)
             }
             Text(app.status).foregroundStyle(.secondary).textSelection(.enabled)
+            if !app.prefs.review && !app.accessibilityGranted {
+                HStack {
+                    Text("Allow Accessibility access to type into other apps.")
+                    Spacer()
+                    Button("Enable insertion…") { app.openAccessibility() }
+                }
+            }
             Text("Source transcript").font(.headline)
             ScrollView { Text(app.source).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(6) }
                 .frame(minHeight: 50, maxHeight: 120).border(Color.secondary.opacity(0.3))
@@ -25,6 +32,7 @@ struct Panel: View {
             }
         }.padding(20).frame(minWidth: 540, minHeight: 360)
         .sheet(isPresented: $app.settingsOpen) { PreferencesView(app: app, preferences: app.prefs) }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in app.refreshPermissions() }
     }
 }
 
@@ -123,12 +131,13 @@ struct PreferencesView: View {
                     LabeledContent("Recording shortcut") {
                         TextField("Recording shortcut", text: $p.shortcut).labelsHidden()
                         Menu("Presets") {
-                            ForEach([Preferences.defaultRecordingShortcut, "Control+Option+F9"], id: \.self) { shortcut in
+                            ForEach([Preferences.defaultRecordingShortcut, "Control+Shift+Space", "Control+Option+F9", "Ctrl+Numpad0"], id: \.self) { shortcut in
                                 Button(shortcut) { p.shortcut = shortcut }
                             }
                         }.fixedSize()
                     }
                     TextField("Cancel shortcut", text: $p.cancelShortcut)
+                    Text("Option+Space works without Fn or a numeric keypad. Choose another shortcut if it is already in use.").foregroundStyle(.secondary)
                     Stepper("Recording limit · \(p.minutes) min", value: $p.minutes, in: 1...60)
                     Toggle("Press to toggle recording", isOn: $p.toggle)
                     Toggle("Play start and end tones", isOn: $p.sounds)
@@ -139,10 +148,12 @@ struct PreferencesView: View {
                                 AVCaptureDevice.requestAccess(for: .audio) { _ in DispatchQueue.main.async { devices = Capture.devices } }
                             } else { privacy("Microphone") }
                         }
-                        Button("Accessibility access…") {
-                            if !AXIsProcessTrusted() { _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary) }
-                            privacy("Accessibility")
-                        }
+                        Button("Accessibility access…") { app.openAccessibility() }
+                    }
+                    Text(app.accessibilityGranted ? "Accessibility access is enabled." : "Accessibility access is missing. Enable TalkToMe to insert text into other apps.")
+                        .foregroundStyle(.secondary)
+                    if !app.accessibilityGranted {
+                        Text("If TalkToMe is already enabled there, remove and add the installed app again, then restart it.").foregroundStyle(.secondary)
                     }
                 }.tabItem { Text("Dictation") }
                 Form {

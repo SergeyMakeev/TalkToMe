@@ -57,9 +57,11 @@ struct Preferences: Codable, Equatable {
     var sounds = true
     var minutes = 5
     var microphone = "" // AVCaptureDevice.uniqueID; empty follows the system default.
-    static let defaultRecordingShortcut = "Ctrl + Numpad 0"
+    static let defaultRecordingShortcut = "Option+Space"
+    static let defaultCancelShortcut = "Control+Option+Escape"
     var shortcut = Self.defaultRecordingShortcut
-    var cancelShortcut = "Control+Option+F10"
+    var cancelShortcut = Self.defaultCancelShortcut
+    var shortcutDefaultsVersion = 1
     var glossary = ["SLIM", "RCC", "EditableMesh", "CFrame", "RenderDoc", "Vulkan", "llama.cpp", "draw calls", "latency"]
 
     static func load(from file: URL = settingsFile) throws -> Self {
@@ -68,7 +70,21 @@ struct Preferences: Codable, Equatable {
         guard let saved else { throw Failure("Invalid preferences. Save new settings to repair them.") }
         var defaults = try JSONSerialization.jsonObject(with: JSONEncoder().encode(Self())) as! [String: Any]
         defaults["translation"] = Translation.server.rawValue // Saved preferences from before bundled translation.
-        return try JSONDecoder().decode(Self.self, from: JSONSerialization.data(withJSONObject: defaults.merging(saved) { _, new in new }))
+        var result = try JSONDecoder().decode(Self.self, from: JSONSerialization.data(withJSONObject: defaults.merging(saved) { _, new in new }))
+        // Migrate once; users can still explicitly choose the old presets later.
+        // Avoid colliding with a customized shortcut for the other action.
+        if (saved["shortcutDefaultsVersion"] as? Int ?? 0) < 1 {
+            if (try? KeyChord(result.shortcut)) == (try? KeyChord("Ctrl+Numpad0")),
+               (try? KeyChord(result.cancelShortcut)) != (try? KeyChord(Self.defaultRecordingShortcut)) {
+                result.shortcut = Self.defaultRecordingShortcut
+            }
+            if (try? KeyChord(result.cancelShortcut)) == (try? KeyChord("Control+Option+F10")),
+               (try? KeyChord(result.shortcut)) != (try? KeyChord(Self.defaultCancelShortcut)) {
+                result.cancelShortcut = Self.defaultCancelShortcut
+            }
+            result.shortcutDefaultsVersion = 1
+        }
+        return result
     }
     func requiredModels() throws -> [ModelDownload] {
         let activity = try ModelDownload.get("activity")

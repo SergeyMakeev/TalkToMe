@@ -71,7 +71,13 @@ import AVFoundation
 }
 
 let args = CommandLine.arguments
-if args.count == 2 && args[1] == "--check-local-translation" {
+if args.count == 2 && args[1] == "--check-insertion" {
+    Task { @MainActor in
+        do { try await checkTextInsertion(); exit(0) }
+        catch { fputs("\(error.localizedDescription)\n", stderr); exit(1) }
+    }
+    dispatchMain()
+} else if args.count == 2 && args[1] == "--check-local-translation" {
     Task { @MainActor in
         let editor = EnglishEditor()
         do {
@@ -121,15 +127,29 @@ if args.count == 2 && args[1] == "--check-local-translation" {
             try Data("{}".utf8).write(to: file)
             guard try Preferences.load(from: file).translation == .server else { throw Failure("Legacy server selection lost.") }
             let record = try KeyChord(draft.shortcut)
-            guard record.code == UInt32(kVK_ANSI_Keypad0), record.modifiers == UInt32(controlKey),
-                  try record == KeyChord("Ctrl+NumPad0") else { throw Failure("Default talking shortcut failed.") }
+            guard record.code == UInt32(kVK_Space), record.modifiers == UInt32(optionKey),
+                  try KeyChord(draft.cancelShortcut) == KeyChord("Ctrl+Alt+Escape") else { throw Failure("Default talking shortcut failed.") }
+            try Data(#"{"shortcut":"Ctrl + Numpad 0","cancelShortcut":"Control+Option+F10","review":false}"#.utf8).write(to: file)
+            let migrated = try Preferences.load(from: file)
+            guard migrated.shortcut == draft.shortcut, migrated.cancelShortcut == draft.cancelShortcut, !migrated.review else {
+                throw Failure("Legacy Mac shortcuts did not migrate or review mode changed.")
+            }
             for digit in 0...9 {
                 guard try KeyChord("Ctrl + Numpad \(digit)") != KeyChord("Ctrl+\(digit)") else { throw Failure("Keypad and number row must be distinct.") }
             }
             draft.shortcut = "Control+Option+F9"
+            draft.cancelShortcut = "Control+Shift+Escape"
             draft.threads = 1; draft.review = true; draft.glossary = ["Metal"]; draft.prompt = "Edit lightly."
             try draft.save(to: file)
             guard try Preferences.load(from: file) == draft else { throw Failure("Preferences did not round trip.") }
+            var keypad = draft
+            keypad.shortcut = "Ctrl+Numpad0"; keypad.cancelShortcut = "Control+Option+F10"
+            try keypad.save(to: file)
+            guard try Preferences.load(from: file) == keypad else { throw Failure("Explicit legacy shortcut choice was overwritten.") }
+            try Data(#"{"shortcut":"Ctrl+Numpad0","cancelShortcut":"Option+Space"}"#.utf8).write(to: file)
+            let conflict = try Preferences.load(from: file)
+            try conflict.validate()
+            guard conflict.shortcut == "Ctrl+Numpad0", conflict.cancelShortcut == "Option+Space" else { throw Failure("Shortcut migration conflicts with a custom shortcut.") }
             guard try KeyChord("Ctrl+Option+F9") == KeyChord("Control+Alt+F9"), !(try EnglishEditor.defaultPrompt).isEmpty else { throw Failure("Defaults failed.") }
             let ok = Data(#"{"choices":[{"finish_reason":"stop","message":{"content":" Hello. "}}]}"#.utf8)
             guard try EnglishEditor.completeText(ok) == "Hello." else { throw Failure("Completion parsing failed.") }

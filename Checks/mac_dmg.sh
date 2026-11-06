@@ -25,3 +25,4 @@ if [[ "${NOTARIZE:-false}" == true ]]; then
     spctl --assess --type execute --verbose=4 "$installed"
 fi
 "$installed/Contents/MacOS/TalkToMe" --self-test
+"$installed/Contents/MacOS/TalkToMe" --check-insertion

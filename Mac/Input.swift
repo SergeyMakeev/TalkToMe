@@ -141,21 +141,38 @@ struct Destination {
         var value: CFTypeRef?
         return AXUIElementCopyAttributeValue(el, key as CFString, &value) == .success ? value : nil
     }
-    static func capture() -> Self? {
-        guard AXIsProcessTrusted(), let app = NSWorkspace.shared.frontmostApplication,
-              app.processIdentifier != getpid() else { return nil }
+    static func capture() -> Result<Self, InsertionProblem> {
+        guard AXIsProcessTrusted() else { return .failure(.accessibility) }
+        guard let app = NSWorkspace.shared.frontmostApplication else { return .failure(.noApplication) }
+        guard app.processIdentifier != getpid() else { return .failure(.ownWindow) }
         let bundle = (app.bundleIdentifier ?? "").lowercased()
-        guard !["terminal","iterm","wezterm","alacritty","kitty","ghostty","warp-terminal"].contains(where: bundle.contains) else { return nil }
+        guard !["terminal","iterm","wezterm","alacritty","kitty","ghostty","warp-terminal"].contains(where: bundle.contains) else { return .failure(.terminal) }
+        guard !IsSecureEventInputEnabled() else { return .failure(.secureInput) }
         let application = AXUIElementCreateApplication(app.processIdentifier)
-        AXUIElementSetMessagingTimeout(application, 0.25)
-        guard let item = attribute(application, kAXFocusedUIElementAttribute), CFGetTypeID(item) == AXUIElementGetTypeID() else { return nil }
-        let el = item as! AXUIElement
+        // Some editors expose focus through the system-wide object, others through
+        // their application object. Never accept an element belonging to another app.
+        var focused: AXUIElement?
+        var error = AXError.noValue
+        for root in [AXUIElementCreateSystemWide(), application] {
+            AXUIElementSetMessagingTimeout(root, 0.25)
+            var item: CFTypeRef?
+            error = AXUIElementCopyAttributeValue(root, kAXFocusedUIElementAttribute as CFString, &item)
+            if error == .success, let item, CFGetTypeID(item) == AXUIElementGetTypeID() {
+                let element = item as! AXUIElement
+                var owner: pid_t = 0
+                if AXUIElementGetPid(element, &owner) == .success, owner == app.processIdentifier {
+                    focused = element; break
+                }
+                error = .invalidUIElement
+            } else if error == .success { error = .noValue }
+        }
+        guard let el = focused else { return .failure(.focusUnavailable(error.rawValue)) }
         AXUIElementSetMessagingTimeout(el, 0.25)
         let role = attribute(el, kAXRoleAttribute) as? String ?? ""
-        guard ["AXTextField","AXTextArea","AXComboBox","AXSearchField"].contains(role),
-              attribute(el, kAXSubroleAttribute) as? String != "AXSecureTextField",
-              attribute(el, kAXEnabledAttribute) as? Bool != false else { return nil }
-        guard !IsSecureEventInputEnabled() else { return nil }
+        guard attribute(el, kAXSubroleAttribute) as? String != "AXSecureTextField" else { return .failure(.secureInput) }
+        guard ["AXTextField","AXTextArea","AXComboBox","AXSearchField"].contains(role) ||
+              attribute(el, "AXEditable") as? Bool == true else { return .failure(.unsupportedField) }
+        guard attribute(el, kAXEnabledAttribute) as? Bool != false else { return .failure(.disabledField) }
         var ancestor: AXUIElement? = el
         for depth in 0..<12 {
             guard let node = ancestor else { break }
@@ -163,13 +180,16 @@ struct Destination {
             if role == "AXWindow" || role == "AXApplication" { break }
             var labels = ["AXIdentifier", kAXRoleDescriptionAttribute]
             if depth == 0 { labels += [kAXTitleAttribute, kAXDescriptionAttribute] }
-            if labels.contains(where: { (attribute(node, $0) as? String)?.localizedCaseInsensitiveContains("terminal") == true }) { return nil }
+            if labels.contains(where: { (attribute(node, $0) as? String)?.localizedCaseInsensitiveContains("terminal") == true }) { return .failure(.terminal) }
             guard let parent = attribute(node, kAXParentAttribute), CFGetTypeID(parent) == AXUIElementGetTypeID() else { break }
             ancestor = (parent as! AXUIElement)
         }
-        return Self(pid: app.processIdentifier, field: el)
+        return .success(Self(pid: app.processIdentifier, field: el))
     }
-    func stillFocused() -> Bool { Self.capture().map { $0.pid == pid && CFEqual($0.field, field) } ?? false }
+    func stillFocused() -> Bool {
+        guard case .success(let current) = Self.capture() else { return false }
+        return current.pid == pid && CFEqual(current.field, field)
+    }
 
     private func atCaret(_ text: String) -> String {
         guard text.first?.isLetter == true || text.first?.isNumber == true,
@@ -189,39 +209,28 @@ struct Destination {
             (right == nil || right!.isWhitespace) ? " " + text : text
     }
 
-    @MainActor func insert(_ english: String, valid: () -> Bool) async throws -> Bool {
-        for _ in 0..<48 {
-            let flags = CGEventSource.flagsState(.combinedSessionState)
-            if flags.intersection([.maskCommand,.maskAlternate,.maskControl,.maskShift]).isEmpty { break }
-            try await Task.sleep(nanoseconds: 25_000_000)
-        }
-        try Task.checkCancellation()
-        guard CGEventSource.flagsState(.combinedSessionState).intersection([.maskCommand,.maskAlternate,.maskControl,.maskShift]).isEmpty,
-              valid(), stillFocused() else { return false }
-        let text = atCaret(english)
-        var settable = DarwinBoolean(false)
-        if AXUIElementIsAttributeSettable(field, kAXSelectedTextAttribute as CFString, &settable) == .success && settable.boolValue {
-            return AXUIElementSetAttributeValue(field, kAXSelectedTextAttribute as CFString, text as CFString) == .success
-        }
-        // Direct printable input for editors that expose focus but do not allow AX selection replacement.
-        guard AXUIElementIsAttributeSettable(field, kAXValueAttribute as CFString, &settable) == .success, settable.boolValue,
-              !text.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else { return false }
-        var chunk = [UniChar]()
-        func send() -> Bool {
-            guard stillFocused(), let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
-                  let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false) else { return false }
-            for event in [down, up] {
-                event.flags = []
-                event.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk)
-                event.postToPid(pid)
-            }
-            chunk.removeAll(keepingCapacity: true)
-            return true
-        }
-        for scalar in text.unicodeScalars {
-            if chunk.count + scalar.utf16.count > 20 && !send() { return false }
-            chunk.append(contentsOf: scalar.utf16)
-        }
-        return chunk.isEmpty || send()
+    @MainActor func insert(_ english: String, valid: () -> Bool) async throws -> InsertionOutcome {
+        let delivery = TextInsertion(
+            modifiersReleased: { CGEventSource.flagsState(.combinedSessionState).intersection([.maskCommand,.maskAlternate,.maskControl,.maskShift]).isEmpty },
+            focused: { stillFocused() },
+            secureInput: { IsSecureEventInputEnabled() },
+            selectionWritable: {
+                var settable = DarwinBoolean(false)
+                return AXUIElementIsAttributeSettable(field, kAXSelectedTextAttribute as CFString, &settable) == .success && settable.boolValue
+            },
+            replaceSelection: { AXUIElementSetAttributeValue(field, kAXSelectedTextAttribute as CFString, $0 as CFString) },
+            canPostEvents: { CGPreflightPostEventAccess() },
+            sendUnicode: { chunk in
+                guard let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true),
+                      let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false) else { return false }
+                for event in [down, up] {
+                    event.flags = []
+                    event.keyboardSetUnicodeString(stringLength: chunk.count, unicodeString: chunk)
+                    event.postToPid(pid)
+                }
+                return true
+            },
+            prepareText: { atCaret($0) })
+        return try await delivery.insert(english, valid: valid)
     }
 }

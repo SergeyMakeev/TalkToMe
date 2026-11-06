@@ -9,12 +9,14 @@ import AVFoundation
     @Published private(set) var source = ""
     @Published var english = ""
     @Published var settingsOpen = false
+    @Published private(set) var accessibilityGranted = AXIsProcessTrusted()
     var refreshMenu: (() -> Void)?
     private let keys = Hotkeys()
     private var speech = SpeechEngine()
     private let editor = EnglishEditor()
     private var mic: Capture?
     private var target: Destination?
+    private var targetProblem: InsertionProblem?
     private var audio: [Float] = []
     private var language = ""
     private var pressed = false
@@ -36,7 +38,10 @@ import AVFoundation
             object: nil, queue: .main) { [weak self] notification in
                 let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
                 MainActor.assumeIsolated {
-                    if self?.target?.pid != app?.processIdentifier { self?.target = nil }
+                    if let target = self?.target, target.pid != app?.processIdentifier {
+                        self?.target = nil
+                        self?.targetProblem = .focusChanged
+                    }
                 }
             }
     }
@@ -53,7 +58,14 @@ import AVFoundation
     func configure() {
         guard phase == .idle else { return }
         pressed = false
+        refreshPermissions()
         settingsOpen = true
+    }
+    func refreshPermissions() { accessibilityGranted = AXIsProcessTrusted() }
+    func openAccessibility() {
+        refreshPermissions()
+        if !accessibilityGranted { _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary) }
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") { NSWorkspace.shared.open(url) }
     }
     func save(_ p: Preferences, key: String, remove: Bool) throws {
         try p.validate()
@@ -88,6 +100,7 @@ import AVFoundation
     private func start() {
         let capture = Capture()
         let id = UUID()
+        refreshPermissions()
         let destination = prefs.review ? nil : Destination.capture()
         do {
             try prefs.validate()
@@ -99,7 +112,13 @@ import AVFoundation
             }
             revision = id
             mic = capture
-            target = destination
+            target = nil; targetProblem = nil
+            if let destination {
+                switch destination {
+                case .success(let field): target = field
+                case .failure(let problem): targetProblem = problem
+                }
+            }
             audio.removeAll()
             source = ""; english = ""
             phase = .recording
@@ -146,7 +165,7 @@ import AVFoundation
         let p = prefs
         task = Task {
             defer {
-                if revision == id { keys.disableCancel(); target = nil; phase = .idle; task = nil; job = nil }
+                if revision == id { keys.disableCancel(); target = nil; targetProblem = nil; phase = .idle; task = nil; job = nil }
             }
             do {
                 if source.isEmpty || p.language != language {
@@ -160,12 +179,14 @@ import AVFoundation
                 let text = try await editor.edit(source, p)
                 try Task.checkCancellation()
                 english = text
-                if insert, let destination = target,
-                   try await destination.insert(text, valid: { self.target != nil && self.revision == id }) {
-                    status = "Text sent to the focused field."
-                } else if insert && !p.review && !AXIsProcessTrusted() {
-                    status = "Ready to copy. Allow Accessibility in Settings to insert at the cursor."
-                } else { status = "Ready to review and copy." }
+                refreshPermissions()
+                if p.review { status = "Review mode is on. Ready to review and copy." }
+                else if !insert { status = "Reprocessed. Use Copy result to insert it." }
+                else if !accessibilityGranted { status = InsertionOutcome.blocked(.accessibility).message }
+                else if let destination = target {
+                    let outcome = try await destination.insert(text, valid: { self.target != nil && self.revision == id })
+                    if revision == id { status = outcome.message }
+                } else { status = InsertionOutcome.blocked(targetProblem ?? .focusChanged).message }
             } catch { if revision == id { status = error.localizedDescription } }
         }
     }
@@ -174,7 +195,7 @@ import AVFoundation
         revision = UUID()
         job?.cancel(); task?.cancel(); task = nil; job = nil
         _ = try? stopMicrophone()
-        target = nil; audio.removeAll(); source = ""; english = ""
+        target = nil; targetProblem = nil; audio.removeAll(); source = ""; english = ""
         keys.disableCancel()
         phase = .idle; status = "Cancelled."
     }
