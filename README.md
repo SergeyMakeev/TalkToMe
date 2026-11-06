@@ -6,7 +6,7 @@ Download a versioned build from [GitHub Releases](https://github.com/SergeyMakee
 
 ## Install on macOS
 
-Use the [macOS 0.2.4 preview](https://github.com/SergeyMakeev/TalkToMe/releases/tag/macos-v0.2.4-preview.1) for Slack insertion compatibility, Accessibility repair, the Quit crash fix, and MacBook shortcuts. The latest stable release remains v0.2.1.
+Use [macOS 0.2.5 preview 2](https://github.com/SergeyMakeev/TalkToMe/releases/tag/macos-v0.2.5-preview.2) for verified pasting into Slack and Visual Studio Code, Accessibility repair, the Quit crash fix, and MacBook shortcuts. Preview 1 was withdrawn; use preview 2. The latest stable release remains v0.2.1.
 
 1. On macOS 13 or later, download **TalkToMe-macOS-arm64.dmg** for Apple silicon or **TalkToMe-macOS-x86_64.dmg** for Intel. Open the disk image, drag **TalkToMe** onto **Applications**, eject the image, and open the installed app from Applications. For a CI build, extract the Actions artifact to get the DMG. For the **v0.1.0** release, extract the ZIP and move **TalkToMe.app** to Applications. [Releases](https://github.com/SergeyMakeev/TalkToMe/releases) · [Mac builds](https://github.com/SergeyMakeev/TalkToMe/actions/workflows/macos.yml)
 2. Launch TalkToMe. In **Settings → Dictation**, grant **Microphone** access for recording and **Accessibility** access for insertion into other apps. Select a microphone or follow the system default.
@@ -30,7 +30,7 @@ If removing and re-adding the app does not fix an enabled-but-denied permission,
 
 ### If macOS offers “Move to Trash”
 
-Read the sentence above the buttons. The published **v0.1.0–v0.2.1** Mac releases, **0.2.2–0.2.4 Mac previews**, and ordinary CI builds use an ad-hoc signature and are **not notarized by Apple**. If the alert says Apple **cannot verify** the developer or check the app for malware, and you trust the download, try opening TalkToMe once, dismiss the alert, then open **System Settings → Privacy & Security**. Scroll to the TalkToMe entry under **Security**, click **Open Anyway**, and confirm. This approves that copy of the app. [Apple’s Gatekeeper guide](https://support.apple.com/en-us/102445)
+Read the sentence above the buttons. The published **v0.1.0–v0.2.1** Mac releases, **0.2.2–0.2.5 Mac previews**, and ordinary CI builds use an ad-hoc signature and are **not notarized by Apple**. If the alert says Apple **cannot verify** the developer or check the app for malware, and you trust the download, try opening TalkToMe once, dismiss the alert, then open **System Settings → Privacy & Security**. Scroll to the TalkToMe entry under **Security**, click **Open Anyway**, and confirm. This approves that copy of the app. [Apple’s Gatekeeper guide](https://support.apple.com/en-us/102445)
 
 If the alert says the app **is damaged**, download a fresh copy of the correct architecture from the release page. To compare the downloaded file with GitHub’s SHA-256 digest, run `shasum -a 256` followed by the path to the downloaded ZIP or DMG. If macOS says the app **will damage your computer**, leave it blocked and report the exact message and release version. [Apple’s explanation of these alerts](https://support.apple.com/en-us/102445)
 
