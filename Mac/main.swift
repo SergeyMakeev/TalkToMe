@@ -91,7 +91,16 @@ import AVFoundation
 }
 
 let args = CommandLine.arguments
-if args.count == 2 && args[1] == "--check-insertion" {
+if args.count == 2 && args[1] == "--check-access-reset" {
+    Task { @MainActor in
+        do {
+            try await AccessibilityAccess.resetApproval()
+            print("TalkToMe Accessibility approval reset.")
+            exit(0)
+        } catch { fputs("\(error.localizedDescription)\n", stderr); exit(1) }
+    }
+    dispatchMain()
+} else if args.count == 2 && args[1] == "--check-insertion" {
     Task { @MainActor in
         do { try await checkTextInsertion(); exit(0) }
         catch { fputs("\(error.localizedDescription)\n", stderr); exit(1) }

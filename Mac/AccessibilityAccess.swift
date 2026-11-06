@@ -15,6 +15,23 @@ struct AccessibilityAccess: Equatable {
         return "macOS is not granting Accessibility access to this running copy of TalkToMe."
     }
     static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "development" }
+    // Explicit user action only. Never reset other apps or other permission types.
+    static func resetApproval() async throws {
+        let identifier = "com.sergeymakeev.TalkToMe"
+        guard Bundle.main.bundleIdentifier == identifier else { throw Failure("Run the installed TalkToMe app to reset its approval.") }
+        let process = Process()
+        let output = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+        process.arguments = ["reset", "Accessibility", identifier]
+        process.standardOutput = output
+        process.standardError = output
+        try process.run()
+        defer { if process.isRunning { process.terminate() } }
+        for _ in 0..<100 where process.isRunning { try await Task.sleep(nanoseconds: 100_000_000) }
+        guard !process.isRunning else { throw Failure("macOS did not finish resetting the approval. Quit TalkToMe and try again.") }
+        let detail = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard process.terminationStatus == 0 else { throw Failure("macOS could not reset TalkToMe’s Accessibility approval: \(detail)") }
+    }
     var diagnostics: String {
         var code: SecCode?
         var staticCode: SecStaticCode?

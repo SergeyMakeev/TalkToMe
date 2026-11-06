@@ -45,6 +45,8 @@ struct PreferencesView: View {
     @State private var feedback = ""
     @State private var download: Task<Void, Never>?
     @State private var devices = Capture.devices
+    @State private var confirmAccessReset = false
+    @State private var resettingAccess = false
     private let standard = (try? EnglishEditor.defaultPrompt) ?? ""
     init(app: Dictation, preferences: Preferences) {
         self.app = app
@@ -153,6 +155,8 @@ struct PreferencesView: View {
                     Text(app.accessibility.message).foregroundStyle(.secondary)
                     if !app.accessibility.trusted || !app.accessibility.canPostEvents {
                         Text("If the switch is already on, remove TalkToMe with the minus button, add this copy again, and quit and reopen it. Preview updates can invalidate an earlier approval.").foregroundStyle(.secondary)
+                        Button(resettingAccess ? "Resetting approval…" : "Reset TalkToMe’s Accessibility approval…") { confirmAccessReset = true }
+                            .disabled(resettingAccess)
                     }
                     HStack {
                         Button("Recheck access") { app.refreshPermissions() }
@@ -213,5 +217,21 @@ struct PreferencesView: View {
             }
         }.padding(18).frame(width: 680, height: 580)
         .onDisappear { download?.cancel() }
+        .confirmationDialog("Reset TalkToMe’s Accessibility approval?", isPresented: $confirmAccessReset, titleVisibility: .visible) {
+            Button("Reset approval", role: .destructive) {
+                resettingAccess = true
+                Task { @MainActor in
+                    defer { resettingAccess = false }
+                    do {
+                        try await AccessibilityAccess.resetApproval()
+                        feedback = "Approval reset. Enable TalkToMe in Accessibility, then quit and reopen the app."
+                        app.openAccessibility()
+                    } catch { feedback = error.localizedDescription }
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Clears only TalkToMe’s saved Accessibility approval. You will need to enable access again in System Settings.")
+        }
     }
 }
