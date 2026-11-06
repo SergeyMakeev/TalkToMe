@@ -49,8 +49,12 @@ jobs:
           RELEASE_TAG: ${{ inputs.test_release }}
           QUARANTINE_RELEASE: ${{ inputs.quarantine_release }}
         run: bash Checks/mac_release_launch.sh
-      - uses: actions/upload-artifact@v6
+      - name: Check diagnostic logs before upload
         if: always()
+        id: diagnostics
+        run: python3 Checks/check_mac_launch_diagnostics.py build/mac-launch
+      - uses: actions/upload-artifact@v6
+        if: always() && steps.diagnostics.outcome == 'success'
         with:
           name: launch-diagnostics-${{ matrix.runner }}
           path: build/mac-launch/

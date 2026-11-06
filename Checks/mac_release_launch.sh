@@ -14,12 +14,15 @@ installed="$work/Installed Apps/TalkToMe.app"
 mkdir -p "$mount" "$(dirname "$installed")"
 attached=false
 launcher=''
+existing_pids=" $(pgrep -x TalkToMe | tr '\n' ' ' || true) "
 
-# Match only the app installed by this check, even if another copy is running.
+# A quarantined app may be translocated to a different path. In this fresh CI
+# session, track new TalkToMe PIDs and leave any pre-existing copies alone.
 app_pid() {
-    ps -axo pid=,comm= -ww | while read -r pid executable; do
-        if [[ "$executable" == "$installed/Contents/MacOS/TalkToMe" ]]; then printf '%s\n' "$pid"; fi
-    done
+    local pid
+    while read -r pid; do
+        if [[ -n "$pid" && "$existing_pids" != *" $pid "* ]]; then printf '%s\n' "$pid"; fi
+    done < <(pgrep -x TalkToMe || true)
 }
 cleanup() {
     local result=$?
@@ -28,7 +31,9 @@ cleanup() {
         while read -r pid; do
             [[ -z "$pid" ]] || sample "$pid" 3 -file "$out/sample-$pid.txt" || true
         done < <(app_pid)
-        log show --last 3m --style compact --info --predicate 'eventMessage CONTAINS[c] "TalkToMe"' > "$out/launch-policy.txt" 2>&1 || true
+        # Exclude Launch Services / launchd messages: they can dump the caller's
+        # entire environment. Only collect this app's security-assessment events.
+        log show --last 3m --style compact --info --predicate '(process == "syspolicyd" OR process == "amfid" OR sender == "AppleSystemPolicy" OR sender == "AppleMobileFileIntegrity") AND eventMessage CONTAINS[c] "TalkToMe"' > "$out/launch-policy.txt" 2>&1 || true
     fi
     while read -r pid; do [[ -z "$pid" ]] || kill "$pid" 2>/dev/null || true; done < <(app_pid)
     if [[ -n "$launcher" ]]; then kill "$launcher" 2>/dev/null || true; fi
@@ -38,6 +43,7 @@ cleanup() {
 trap cleanup EXIT
 
 gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern TalkToMe-macOS-arm64.dmg --dir "$work"
+unset GH_TOKEN GITHUB_TOKEN
 hdiutil verify "$work/TalkToMe-macOS-arm64.dmg"
 hdiutil attach -readonly -nobrowse -noautoopen -mountpoint "$mount" "$work/TalkToMe-macOS-arm64.dmg" >/dev/null
 attached=true
@@ -55,7 +61,10 @@ if [[ "${QUARANTINE_RELEASE:-false}" == true ]]; then
 fi
 xattr -p com.apple.quarantine "$installed" > "$out/quarantine.txt" 2>&1 || true
 touch "$out/stdout.txt" "$out/stderr.txt"
-open -n -W -a "$installed" --stdout "$out/stdout.txt" --stderr "$out/stderr.txt" --args --check-window &
+# Launch Services may log the launched environment, so give the app only the
+# OS paths it needs. No CI credentials should reach the app or its launch logs.
+env -i HOME="$HOME" PATH=/usr/bin:/bin:/usr/sbin:/sbin TMPDIR="$TMPDIR" \
+    /usr/bin/open -n -W -a "$installed" --stdout "$out/stdout.txt" --stderr "$out/stderr.txt" --args --check-window &
 launcher=$!
 for i in {1..45}; do
     if ! kill -0 "$launcher" 2>/dev/null; then
