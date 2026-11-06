@@ -81,6 +81,13 @@ import Cocoa
         try require(!InsertionProblem.focusUnavailable(AXError.noValue.rawValue).message.contains("Accessibility"), "missing field is not reported as missing permission")
     }
     do {
+        var current = true
+        let recovery = FocusRecovery<String>(current: { current }, read: { current = false; return .success("new window") },
+            enable: { true }, pause: { _ in })
+        let result = await recovery.resolve(.failure(.unsupportedField))
+        try require(result == .failure(.focusChanged), "switching windows during an AX read rejects its result")
+    }
+    do {
         var reads = 0, requests = 0
         let recovery = FocusRecovery<String>(current: { true }, read: { reads += 1; return .success("unexpected") },
             enable: { requests += 1; return true }, pause: { _ in throw CancellationError() })

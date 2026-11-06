@@ -54,6 +54,7 @@ enum InsertionProblem: Error, Equatable {
             catch { return .failure(.focusChanged) }
             guard !Task.isCancelled, current() else { return .failure(.focusChanged) }
             result = read()
+            guard !Task.isCancelled, current() else { return .failure(.focusChanged) }
             if !retryable(result) { return result }
         }
         return result
