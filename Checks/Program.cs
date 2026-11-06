@@ -21,6 +21,11 @@ internal static class Program
         }
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
+        if (args is ["--translation-check", var modelDir, var modelId])
+        {
+            try { EditingCheck.RunModels(modelDir, modelId).GetAwaiter().GetResult(); return 0; }
+            catch (Exception error) { Console.Error.WriteLine(error); return 1; }
+        }
         if (args.Length is 3 or 4 && args[0] == "--benchmark")
         {
             if (args.Length == 4 && args[3] is not ("portable" or "cpu" or "auto")) throw new ArgumentException("Use --benchmark model-directory sample.wav [auto|cpu|portable].");
@@ -50,6 +55,7 @@ internal static class Program
         CheckDownload().GetAwaiter().GetResult();
         CheckSettings();
         PerformanceCheck.Check();
+        EditingCheck.Check();
         foreach (string bad in new[] { "length", "tool_calls", "" })
             Reject(JsonSerializer.Serialize(new { choices = new[] { new { finish_reason = bad, message = new { content = "Partial" } } } }));
         Reject("""{"choices":[{"finish_reason":"stop","message":{"reasoning_content":"thought","content":"Final"}}]}""");
@@ -105,7 +111,7 @@ internal static class Program
         try
         {
             var fresh = Settings.Load(root.FullName);
-            Assert(fresh.BundledSpeech && fresh.Translation == "qwen08", "fresh install uses bundled models");
+            Assert(fresh.BundledSpeech && fresh.Translation == "qwen2", "fresh install uses bundled models");
             fresh.Translation = "transcript";
             using (var editor = new EnglishEditor(fresh))
                 Assert(editor.EditAsync("Привет", default).GetAwaiter().GetResult() == "Привет", "transcript only");

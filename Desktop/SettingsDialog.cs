@@ -43,11 +43,12 @@ internal sealed class SettingsDialog : Form
         speech.SelectedIndex = !settings.BundledSpeech ? 2 : settings.SpeechModel == "base" ? 0 : 1;
         Row("Listen with", speech);
         var translation = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
-        string[] ids = ["qwen08", "qwen2", "transcript", "server"];
-        translation.Items.AddRange(["Local Qwen 3.5 · 0.8B · 563 MB", "Local Qwen 3.5 · 2B · 1.28 GB",
+        string[] ids = ["qwen08", "qwen2", "qwen4", "transcript", "server"];
+        translation.Items.AddRange(["Local Qwen 3.5 · 0.8B · smallest · 563 MB", "Local Qwen 3.5 · 2B · 1.28 GB", "Local Qwen 3 · 4B Instruct · 2.50 GB",
             "Transcript only · keep the spoken language", "Use my own server"]);
         translation.SelectedIndex = Array.IndexOf(ids, settings.Translation);
         Row("Translate and edit with", translation);
+        Row("", new Label { AutoSize = true, MaximumSize = new(420, 0), Text = "For accuracy, try Whisper Large v3 Turbo and Qwen 2B or 4B. Qwen 0.8B can miss words and instructions." });
         void SetModels(Settings s) {
             s.BundledSpeech = speech.SelectedIndex != 2;
             if (s.BundledSpeech) s.SpeechModel = speech.SelectedIndex == 0 ? "base" : "speech";

@@ -77,7 +77,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: ${{ fromJSON(inputs.apple_silicon_only && '["macos-26"]' || '["macos-15", "macos-15-intel"]') }}
+        runner: ${{ fromJSON(inputs.apple_silicon_only && '["macos-26"]' || '["macos-26", "macos-15-intel"]') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     env:
@@ -103,7 +103,9 @@ jobs:
           build/mac/TalkToMe.app/Contents/MacOS/TalkToMe --check-insertion
           python3 Checks/mac_server.py build/mac/TalkToMe.app/Contents/MacOS/TalkToMe
       - name: Download and run the bundled translator
-        run: build/mac/TalkToMe.app/Contents/MacOS/TalkToMe --check-local-translation
+        run: |
+          build/mac/TalkToMe.app/Contents/MacOS/TalkToMe --check-local-translation qwen2
+          build/mac/TalkToMe.app/Contents/MacOS/TalkToMe --check-local-translation qwen4
       - name: Open the result window and first-run Settings
         timeout-minutes: 2
         run: |

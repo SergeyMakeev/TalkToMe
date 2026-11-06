@@ -110,6 +110,7 @@ struct PreferencesView: View {
             Picker("Translate and edit with", selection: $p.translation) {
                 ForEach(Translation.allCases, id: \.self) { Text($0.label).tag($0) }
             }
+            Text("For accuracy, try Whisper Large v3 Turbo and Qwen 2B or 4B. Qwen 0.8B can miss words and instructions.").font(.caption).foregroundStyle(.secondary)
             if downloadMB > 0 { Text("Download \(downloadMB) MB once to use these models offline.") }
             else if let assets = try? p.requiredModels(), !assets.isEmpty {
                 Text("Selected models are ready for offline use.")

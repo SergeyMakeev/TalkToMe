@@ -27,6 +27,13 @@
     "size": 563036064,
     "digest": "57d1997790d1744fba5b40a7317df71ea5e2acee28c47e78f0cce39c0703f8cf"
   },
+  "qwen4": {
+    "name": "Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+    "repository": "unsloth/Qwen3-4B-Instruct-2507-GGUF",
+    "revision": "a06e946bb6b655725eafa393f4a9745d460374c9",
+    "size": 2497281120,
+    "digest": "3605803b982cb64aead44f6c1b2ae36e3acdb41d8e46c8a94c6533bc4c67e597"
+  },
   "qwen2": {
     "name": "Qwen3.5-2B-Q4_K_M.gguf",
     "repository": "unsloth/Qwen3.5-2B-GGUF",

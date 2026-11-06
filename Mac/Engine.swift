@@ -80,6 +80,29 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
             return try String(contentsOf: file, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
+    nonisolated static func requestBody(_ transcript: String, _ p: Preferences) throws -> [String: Any] {
+        let defaults = p.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        var instruction = try defaults ? defaultPrompt : p.prompt
+        var format: [String: Any] = [:]
+        if p.translation.bundled {
+            guard let file = Bundle.main.url(forResource: "LocalEditing", withExtension: "json"),
+                  let loaded = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any],
+                  let suffix = loaded["instruction"] as? String else { throw Failure("The app is missing its editing format.") }
+            format = loaded
+            instruction += "\n" + suffix
+        }
+        var messages: [[String: String]] = [["role": "system", "content": instruction]]
+        // The tiny model tends to copy examples; larger models benefit from them.
+        if p.translation.bundled && p.translation != .qwen08 && defaults,
+           let examples = format["examples"] as? [[String: String]] { messages += examples }
+        let user = try JSONSerialization.data(withJSONObject: ["transcript": transcript, "glossary": p.glossary], options: [.sortedKeys])
+        messages.append(["role": "user", "content": String(decoding: user, as: UTF8.self)])
+        var body: [String: Any] = ["model": p.model, "temperature": p.temperature, "stream": false,
+            "chat_template_kwargs": ["enable_thinking": false], "max_tokens": min(4096, max(160, transcript.utf16.count + 96)),
+            "messages": messages]
+        if p.translation.bundled { body["response_format"] = format["response_format"] }
+        return body
+    }
     func stop() {
         if let owned, owned.isRunning { owned.terminate() }
         owned = nil
@@ -174,19 +197,15 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if !key.isEmpty { request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization") }
-        let user = try JSONSerialization.data(withJSONObject: ["transcript": transcript, "glossary": p.glossary])
-        let instruction = try p.prompt.isEmpty ? Self.defaultPrompt : p.prompt
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["model": p.model, "temperature": p.temperature, "stream": false,
-            "chat_template_kwargs": ["enable_thinking": false], "max_tokens": min(4096, max(128, transcript.utf16.count + 64)),
-            "messages": [["role": "system", "content": instruction], ["role": "user", "content": String(decoding: user, as: UTF8.self)]]])
+        request.httpBody = try JSONSerialization.data(withJSONObject: Self.requestBody(transcript, p))
         let client = p.translation.bundled ? loopback : session
         let (data, response) = try await client.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw Failure("llama-server returned HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0). Check the server URL, model and API key.")
         }
-        return try Self.completeText(data)
+        return try Self.completeText(data, structured: p.translation.bundled, transcript: transcript)
     }
-    nonisolated static func completeText(_ data: Data) throws -> String {
+    nonisolated static func completeText(_ data: Data, structured: Bool = false, transcript: String? = nil) throws -> String {
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         guard let choices = json?["choices"] as? [[String: Any]], choices.count == 1,
               let message = choices[0]["message"] as? [String: Any], let raw = message["content"] as? String else {
@@ -198,13 +217,25 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         guard choices[0]["finish_reason"] as? String == "stop" else {
             throw Failure("The translator stopped before completing the text. Retry or copy the transcript.")
         }
-        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard ["reasoning", "reasoning_content", "tool_calls", "refusal"].allSatisfy({ k in
+            message[k] == nil || message[k] is NSNull || (message[k] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) == ""
+        }) else { throw Failure("The translator returned reasoning or an invalid result. Retry or copy the transcript.") }
+        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if structured {
+            guard let object = try? JSONSerialization.jsonObject(with: Data(text.utf8)),
+                  let result = object as? [String: Any], result.count == 1, let final = result["text"] as? String else {
+                throw Failure("The translator returned commentary or an invalid result. Try Qwen 2B or 4B, or copy the transcript.")
+            }
+            text = final.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let transcript, text.utf16.count > max(256, transcript.utf16.count * 4) {
+                throw Failure("The translator expanded the dictation unexpectedly. Try a larger model or copy the transcript.")
+            }
+        }
         let forbidden = CharacterSet.controlCharacters.subtracting(CharacterSet(charactersIn: "\t\r\n"))
         guard !text.isEmpty, text.rangeOfCharacter(from: forbidden) == nil,
-              text.range(of: #"</?(think|thinking|reasoning)(\s[^>]*)?>|<\|(im_|channel|message|endof)"#, options: [.regularExpression,.caseInsensitive]) == nil,
-              ["reasoning", "reasoning_content", "tool_calls"].allSatisfy({ k in
-                  message[k] == nil || message[k] is NSNull || (message[k] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) == ""
-              }) else { throw Failure("llama-server returned empty text or reasoning. Check the Qwen template and reasoning settings.") }
+              text.range(of: #"</?(think|thinking|reasoning)(\s[^>]*)?>|<\|(im_|channel|message|endof)"#, options: [.regularExpression,.caseInsensitive]) == nil else {
+            throw Failure("llama-server returned empty text or reasoning. Check the Qwen template and reasoning settings.")
+        }
         return text
     }
 }

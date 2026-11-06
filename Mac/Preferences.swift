@@ -9,12 +9,13 @@ struct Failure: LocalizedError {
 }
 
 enum Translation: String, Codable, CaseIterable {
-    case qwen08, qwen2, transcript, server
-    var bundled: Bool { self == .qwen08 || self == .qwen2 }
+    case qwen08, qwen2, qwen4, transcript, server
+    var bundled: Bool { self == .qwen08 || self == .qwen2 || self == .qwen4 }
     var label: String {
         switch self {
-        case .qwen08: return "Local Qwen 3.5 · 0.8B · 563 MB"
+        case .qwen08: return "Local Qwen 3.5 · 0.8B · smallest · 563 MB"
         case .qwen2: return "Local Qwen 3.5 · 2B · 1.28 GB"
+        case .qwen4: return "Local Qwen 3 · 4B Instruct · 2.50 GB"
         case .transcript: return "Transcript only · keep the spoken language"
         case .server: return "Use my own server"
         }
@@ -28,7 +29,7 @@ struct Preferences: Codable, Equatable {
     static let models = support.appendingPathComponent("Models", isDirectory: true)
     var serverURL = "http://127.0.0.1:8080/v1"
     var model = "dictation"
-    var translation = Translation.qwen08
+    var translation = Translation.qwen2
     var manageServer = false
     var executable = ""
     var serverExecutable: String {

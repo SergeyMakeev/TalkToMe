@@ -9,4 +9,8 @@
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../Desktop/TalkToMe.csproj" /></ItemGroup>
   <ItemGroup><Using Include="System.IO" /></ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="EditingResponses.json" />
+    <EmbeddedResource Include="TranslationCases.json" />
+  </ItemGroup>
 </Project>

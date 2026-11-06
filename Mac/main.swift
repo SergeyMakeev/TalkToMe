@@ -146,16 +146,21 @@ if args.count == 2 && args[1] == "--check-access-reset" {
         catch { fputs("\(error.localizedDescription)\n", stderr); exit(1) }
     }
     dispatchMain()
-} else if args.count == 2 && args[1] == "--check-local-translation" {
+} else if (2...3).contains(args.count) && args[1] == "--check-local-translation" {
     Task { @MainActor in
         let editor = EnglishEditor()
         do {
-            let p = Preferences()
+            var p = Preferences()
+            if args.count == 3 {
+                guard let model = Translation(rawValue: args[2]), model.bundled else { throw Failure("Choose a bundled translator.") }
+                p.translation = model
+            }
             print("Testing bundled translation with \(p.useMetal ? "Metal" : "CPU").")
             _ = try await ModelDownload.get(p.translation.rawValue).install()
             let text = try await editor.edit("У меня два кота.", p)
             guard text.lowercased().contains("cat") else { throw Failure("Unexpected local translation: \(text)") }
             print(text)
+            if p.translation != .qwen08 { try await checkTranslationCases(editor, p) }
             editor.stop()
             exit(0)
         } catch { editor.stop(); fputs("\(error.localizedDescription)\n", stderr); exit(1) }
@@ -191,7 +196,7 @@ if args.count == 2 && args[1] == "--check-access-reset" {
             defer { try? FileManager.default.removeItem(at: temp) }
             let file = temp.appendingPathComponent("settings.json")
             var draft = Preferences()
-            guard draft.translation == .qwen08, try draft.requiredModels().count == 3 else { throw Failure("Default local models missing.") }
+            guard draft.translation == .qwen2, try draft.requiredModels().count == 3 else { throw Failure("Default local models missing.") }
             try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
             try Data("{}".utf8).write(to: file)
             guard try Preferences.load(from: file).translation == .server else { throw Failure("Legacy server selection lost.") }
@@ -226,6 +231,7 @@ if args.count == 2 && args[1] == "--check-access-reset" {
                 let data = Data("{\"choices\":[{\"finish_reason\":\"\(bad)\",\"message\":{\"content\":\"<think>bad</think>\"}}]}".utf8)
                 guard (try? EnglishEditor.completeText(data)) == nil else { throw Failure("Unsafe completion accepted.") }
             }
+            try checkEditingResponses()
             print("Mac preference, shortcut, resource and completion checks passed.")
         }
     } catch { fputs("\(error.localizedDescription)\n", stderr); exit(1) }

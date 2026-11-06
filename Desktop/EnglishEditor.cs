@@ -34,6 +34,34 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
     }
 
     internal static readonly string Instruction = ReadInstruction();
+    private static readonly JsonElement LocalEditing = ReadLocalEditing();
+
+    private static JsonElement ReadLocalEditing()
+    {
+        using var stream = typeof(EnglishEditor).Assembly.GetManifestResourceStream("TalkToMe.LocalEditing.json")!;
+        using var json = JsonDocument.Parse(stream);
+        return json.RootElement.Clone();
+    }
+
+    internal static Dictionary<string, object> RequestBody(string transcript, Settings settings, string model)
+    {
+        bool defaults = string.IsNullOrWhiteSpace(settings.Prompt);
+        string instruction = defaults ? Instruction : settings.Prompt;
+        if (settings.LocalTranslation) instruction += "\n" + LocalEditing.GetProperty("instruction").GetString();
+        var messages = new List<object> { new { role = "system", content = instruction } };
+        // Tiny 0.8B tends to copy examples verbatim. Larger models benefit from them.
+        if (settings.LocalTranslation && settings.Translation != "qwen08" && defaults)
+            messages.AddRange(LocalEditing.GetProperty("examples").EnumerateArray().Select(x => (object)x));
+        messages.Add(new { role = "user", content = JsonSerializer.Serialize(new { transcript, glossary = settings.Glossary }, TranscriptJson) });
+        var body = new Dictionary<string, object> {
+            ["model"] = model, ["messages"] = messages,
+            ["chat_template_kwargs"] = new { enable_thinking = false },
+            ["temperature"] = settings.Temperature,
+            ["max_tokens"] = Math.Clamp(transcript.Length + 96, 160, 4096), ["stream"] = false
+        };
+        if (settings.LocalTranslation) body["response_format"] = LocalEditing.GetProperty("response_format");
+        return body;
+    }
 
     private static string ReadInstruction()
     {
@@ -73,38 +101,45 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
         using var request = new HttpRequestMessage(HttpMethod.Post, server.Endpoint.AbsoluteUri.TrimEnd('/') + "/chat/completions");
         var key = server.Key;
         if (!string.IsNullOrWhiteSpace(key)) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
-        request.Content = JsonContent.Create(new
-        {
-            model = server.Model,
-            messages = new[] {
-                new { role = "system", content = string.IsNullOrWhiteSpace(config.Prompt) ? Instruction : config.Prompt },
-                new { role = "user", content = JsonSerializer.Serialize(new { transcript, glossary = config.Glossary }, TranscriptJson) }
-            },
-            chat_template_kwargs = new { enable_thinking = false },
-            temperature = config.Temperature,
-            max_tokens = Math.Clamp(transcript.Length + 64, 128, 4096),
-            stream = false
-        });
+        request.Content = JsonContent.Create(RequestBody(transcript, config, server.Model));
         using var response = await http.SendAsync(request, token);
         if (!response.IsSuccessStatusCode)
             throw new HttpRequestException($"llama-server returned HTTP {(int)response.StatusCode}. Check serverUrl, model, API key and context size.", null, response.StatusCode);
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
         metrics?.ReadTranslationDetails(json.RootElement);
-        return CompleteText(json.RootElement);
+        return CompleteText(json.RootElement, config.LocalTranslation, transcript);
     }
 
-    internal static string CompleteText(JsonElement response)
+    internal static string CompleteText(JsonElement response, bool structured = false, string? transcript = null)
     {
-        if (!response.TryGetProperty("choices", out var choices) || choices.ValueKind != JsonValueKind.Array ||
-            choices.GetArrayLength() != 1 || !choices[0].TryGetProperty("finish_reason", out var reason) ||
-            reason.GetString() != "stop")
+        if (response.ValueKind != JsonValueKind.Object || !response.TryGetProperty("choices", out var choices) || choices.ValueKind != JsonValueKind.Array ||
+            choices.GetArrayLength() != 1 || choices[0].ValueKind != JsonValueKind.Object || !choices[0].TryGetProperty("finish_reason", out var reason) ||
+            reason.ValueKind != JsonValueKind.String || reason.GetString() != "stop")
             throw new InvalidDataException("llama-server returned an incomplete generation. Retry or copy the transcript.");
-        var message = choices[0].GetProperty("message");
-        var text = message.GetProperty("content").GetString()?.Trim();
-        if (string.IsNullOrWhiteSpace(text) || text.Any(c => char.IsControl(c) && c is not ('\t' or '\n' or '\r')) ||
-            Regex.IsMatch(text, @"</?(think|thinking|reasoning)(?:\s[^>]*)?>|<\|(?:im_|channel|message|endof)", RegexOptions.IgnoreCase) ||
-            new[] { "reasoning", "reasoning_content" }.Any(k =>
+        if (!choices[0].TryGetProperty("message", out var message) || message.ValueKind != JsonValueKind.Object ||
+            !message.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.String ||
+            new[] { "reasoning", "reasoning_content", "tool_calls", "refusal" }.Any(k =>
                 message.TryGetProperty(k, out var value) && !string.IsNullOrWhiteSpace(value.ToString())))
+            throw new InvalidDataException("The translator returned reasoning or an invalid result. Retry or copy the transcript.");
+        string text = content.GetString()!.Trim();
+        if (structured)
+        {
+            try
+            {
+                using var result = JsonDocument.Parse(text);
+                var root = result.RootElement;
+                if (root.ValueKind != JsonValueKind.Object || root.EnumerateObject().Count() != 1 ||
+                    !root.TryGetProperty("text", out var final) || final.ValueKind != JsonValueKind.String)
+                    throw new JsonException();
+                text = final.GetString()!.Trim();
+            }
+            catch (JsonException)
+            { throw new InvalidDataException("The translator returned commentary or an invalid result. Try Qwen 2B or 4B, or copy the transcript."); }
+            if (transcript != null && text.Length > Math.Max(256L, transcript.Length * 4L))
+                throw new InvalidDataException("The translator expanded the dictation unexpectedly. Try a larger model or copy the transcript.");
+        }
+        if (string.IsNullOrWhiteSpace(text) || text.Any(c => char.IsControl(c) && c is not ('\t' or '\n' or '\r')) ||
+            Regex.IsMatch(text, @"</?(think|thinking|reasoning)(?:\s[^>]*)?>|<\|(?:im_|channel|message|endof)", RegexOptions.IgnoreCase))
             throw new InvalidDataException("llama-server returned empty output or reasoning. Check --reasoning off and the Qwen template.");
         return text;
     }

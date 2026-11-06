@@ -1,0 +1,22 @@
+{
+  "instruction": "Response format: return a JSON object with exactly one key, \"text\", containing ONLY the final English dictation. Do not describe the speaker, the transcript, the glossary, or your translation decisions.",
+  "response_format": {
+    "type": "json_schema",
+    "json_schema": {
+      "name": "dictation",
+      "strict": true,
+      "schema": {
+        "type": "object",
+        "properties": { "text": { "type": "string" } },
+        "required": ["text"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "examples": [
+    { "role": "user", "content": "{\"transcript\":\"Привет! Как дела?\",\"glossary\":[]}" },
+    { "role": "assistant", "content": "{\"text\":\"Hi! How are you?\"}" },
+    { "role": "user", "content": "{\"transcript\":\"I need um three copies. Sorry, four copies.\",\"glossary\":[\"SLIM\"]}" },
+    { "role": "assistant", "content": "{\"text\":\"I need four copies.\"}" }
+  ]
+}

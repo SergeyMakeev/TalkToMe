@@ -1,0 +1,22 @@
+[
+  {"name":"final text", "content":"{\"text\":\" One, two, three, four, five. \"}", "expected":"One, two, three, four, five."},
+  {"name":"quotes and paragraphs", "content":"{\"text\":\"He said \\\"hello\\\".\\n\\nWhy?\"}", "expected":"He said \"hello\".\n\nWhy?"},
+  {"name":"legitimate discussion of reasoning", "content":"{\"text\":\"The model's reasoning is incorrect.\"}", "expected":"The model's reasoning is incorrect."},
+  {"name":"plain commentary", "content":"The speaker is describing a sequence of numbers. This translates to one, two, three, four, five."},
+  {"name":"raw final text is not the protocol", "content":"One, two, three, four, five."},
+  {"name":"explanation field", "content":"{\"text\":\"One.\",\"explanation\":\"The speaker means one.\"}"},
+  {"name":"reasoning field", "content":"{\"text\":\"One.\",\"reasoning\":\"Translate this.\"}"},
+  {"name":"missing text", "content":"{\"thoughts\":\"The speaker is counting.\"}"},
+  {"name":"wrong type", "content":"{\"text\":[\"One.\"]}"},
+  {"name":"blank text", "content":"{\"text\":\" \\n\"}"},
+  {"name":"truncated JSON", "content":"{\"text\":\"One"},
+  {"name":"trailing commentary", "content":"{\"text\":\"One.\"} Explanation follows."},
+  {"name":"markdown wrapper", "content":"```json\n{\"text\":\"One.\"}\n```"},
+  {"name":"escaped thinking tags", "content":"{\"text\":\"\\u003cthink>translate</think>One.\"}"},
+  {"name":"control characters", "content":"{\"text\":\"One.\\u0000\"}"},
+  {"name":"special tokens", "content":"{\"text\":\"<|im_start|>One.\"}"},
+  {"name":"truncated generation", "content":"{\"text\":\"One.\"}", "finish_reason":"length"},
+  {"name":"separate reasoning", "content":"{\"text\":\"One.\"}", "reasoning_content":"The speaker is counting."},
+  {"name":"tool call", "content":"{\"text\":\"One.\"}", "tool_calls":[{"id":"example"}]},
+  {"name":"refusal", "content":"{\"text\":\"One.\"}", "refusal":"Cannot translate."}
+]

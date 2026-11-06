@@ -12,6 +12,7 @@
   <ItemGroup>
     <Using Include="System.IO" />
     <EmbeddedResource Include="../Shared/EnglishPrompt.txt" LogicalName="TalkToMe.EnglishPrompt.txt" />
+    <EmbeddedResource Include="../Shared/LocalEditing.json" LogicalName="TalkToMe.LocalEditing.json" />
     <EmbeddedResource Include="../Shared/Models.json" LogicalName="TalkToMe.Models.json" />
     <Content Include="../build/engines/**/*" Exclude="../build/engines/**/TalkToMeSpeech.dll" Link="engines/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <EmbeddedResource Include="Sounds/*.wav" />

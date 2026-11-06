@@ -15,7 +15,7 @@ internal sealed class Settings
     public bool UseGpu { get; set; } = true;
     public string SpeechModel { get; set; } = "base";
     public string Translation { get; set; } = "server";
-    [JsonIgnore] public bool LocalTranslation => Translation is "qwen08" or "qwen2";
+    [JsonIgnore] public bool LocalTranslation => Translation is "qwen08" or "qwen2" or "qwen4";
     [JsonIgnore] public string ModelDirectory { get; set; } = Path.Combine(UserDirectory, "Models");
     public IEnumerable<string> RequiredModels()
     {
@@ -71,7 +71,7 @@ internal sealed class Settings
 
     public static Settings Defaults(string root, bool useUserDirectory = false) => new()
     {
-        Root = Path.GetFullPath(root), SettingsFile = PreferenceFile(root, useUserDirectory), BundledSpeech = true, Translation = "qwen08"
+        Root = Path.GetFullPath(root), SettingsFile = PreferenceFile(root, useUserDirectory), BundledSpeech = true, Translation = "qwen2"
     };
     public Settings Draft() => (Settings)MemberwiseClone();
     public void Validate()
@@ -80,7 +80,7 @@ internal sealed class Settings
             uri.Scheme is not ("http" or "https") || uri.Host.Length == 0 ||
             uri.UserInfo.Length + uri.Query.Length + uri.Fragment.Length != 0)
             throw new InvalidDataException("serverUrl must be an HTTP(S) base URL, for example http://127.0.0.1:8080/v1.");
-        if (SpeechModel is not ("base" or "speech") || Translation is not ("server" or "transcript" or "qwen08" or "qwen2") ||
+        if (SpeechModel is not ("base" or "speech") || Translation is not ("server" or "transcript" or "qwen08" or "qwen2" or "qwen4") ||
             Language is not ("auto" or "en" or "ru") || TimeoutSeconds is < 1 or > 600 ||
             !double.IsFinite(Temperature) || Temperature is < 0 or > 2 || string.IsNullOrWhiteSpace(Model) || Glossary is null ||
             RecordingMinutes is < 1 or > 60 || Microphone < -1 || string.IsNullOrWhiteSpace(Python) ||

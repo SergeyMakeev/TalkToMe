@@ -10,7 +10,7 @@ Use [macOS 0.2.5 preview 2](https://github.com/SergeyMakeev/TalkToMe/releases/ta
 
 1. On macOS 13 or later, download **TalkToMe-macOS-arm64.dmg** for Apple silicon or **TalkToMe-macOS-x86_64.dmg** for Intel. Open the disk image, drag **TalkToMe** onto **Applications**, eject the image, and open the installed app from Applications. For a CI build, extract the Actions artifact to get the DMG. For the **v0.1.0** release, extract the ZIP and move **TalkToMe.app** to Applications. [Releases](https://github.com/SergeyMakeev/TalkToMe/releases) · [Mac builds](https://github.com/SergeyMakeev/TalkToMe/actions/workflows/macos.yml)
 2. Launch TalkToMe. In **Settings → Dictation**, grant **Microphone** access for recording and **Accessibility** access for insertion into other apps. Select a microphone or follow the system default.
-3. In **Models**, choose a listening model and an output option, then **Download and save**. The default Whisper Base and Qwen 3.5 0.8B downloads total about 624 MB. Choose **Transcript only** to keep the spoken language and download just Whisper and its speech detector (61 MB).
+3. In **Models**, choose a listening model and an output option, then **Download and save**. New installations default to Whisper Base and Qwen 3.5 2B, about 1.34 GB together. Existing model choices are preserved. Choose **Transcript only** to keep the spoken language and download just Whisper and its speech detector (61 MB).
 4. To use existing speech files or change Metal acceleration, open **Speech**. Apple silicon uses a compatible physical GPU by default. Intel Macs and Macs with virtual graphics default to CPU. To connect to a separate llama-server, select **Use my own server** in **Models** and enter its details under **Server**.
 5. Focus a text field, hold **Option+Space**, speak, and release. **Control+Option+Escape** cancels. Neither shortcut needs Fn or a numeric keypad. Choose another preset or type your own shortcut in **Settings → Dictation** if a combination is already in use. Older factory shortcuts migrate automatically; other custom shortcuts stay unchanged. Closing the window keeps the menu-bar shortcut active. Click the waveform icon to review the transcript, copy the English, open Settings, or quit.
 
@@ -78,11 +78,18 @@ The panel offers **Auto**, **Russian**, and **English** input and a **Press to t
 | Whisper Base | 61 MB including speech detector | Faster multilingual dictation on a CPU |
 | Whisper Large v3 Turbo | 575 MB including speech detector | Larger multilingual recognizer |
 | Transcript only | None beyond speech | Inserts the transcript in the spoken language |
-| Local Qwen 3.5 0.8B | 563 MB | Translates and lightly edits on this computer |
-| Local Qwen 3.5 2B | 1.28 GB | Larger local translator and editor |
+| Local Qwen 3.5 0.8B | 563 MB | Smallest download; more omissions and instruction-following errors |
+| Local Qwen 3.5 2B | 1.28 GB | Default local translator and editor for new installations |
+| Local Qwen 3 4B Instruct 2507 | 2.50 GB | Optional non-thinking model for translation and editing |
 | Use my own server | None beyond speech | Sends the transcript, editing instructions and glossary to your configured endpoint |
 
-You can cancel setup and open **Settings → Models** again. Completed downloads are reused. **Verify downloaded models** checks the installed files against the catalog and replaces damaged files. Audio stays on your computer. [Whisper models](https://huggingface.co/ggerganov/whisper.cpp) · [Qwen 0.8B](https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF) · [Qwen 2B](https://huggingface.co/unsloth/Qwen3.5-2B-GGUF)
+You can cancel setup and open **Settings → Models** again. Completed downloads are reused. **Verify downloaded models** checks the installed files against the catalog and replaces damaged files. Audio stays on your computer. [Whisper models](https://huggingface.co/ggerganov/whisper.cpp) · [Qwen 0.8B](https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF) · [Qwen 2B](https://huggingface.co/unsloth/Qwen3.5-2B-GGUF) · [Qwen 4B](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF)
+
+For fast Russian speech, try **Whisper Large v3 Turbo** and set **Dictation → Spoken language → Russian** when speaking mainly Russian. Keep Auto for sessions that switch languages. If the source transcript is wrong, changing the translator cannot reliably recover the missing words. For better English output on an M2 Max, try **Qwen 4B Instruct**; **Qwen 2B** uses a smaller download. Both run with the existing bundled runtime and Metal support.
+
+The 0.8B model produced omissions, untranslated text and explanatory prose in local checks. The 2B and 4B models passed six focused regression cases covering counting with an unrelated glossary, questions, spoken corrections, mixed technical dictation, quoted commands, and negation/numbers. These checks are not a broad translation benchmark, and formatting checks cannot detect every mistranslation. [Test inputs](Checks/TranslationCases.json)
+
+Potential future alternatives include [TranslateGemma 4B](https://huggingface.co/google/translategemma-4b-it) for dedicated translation and [Qwen3-ASR 0.6B/1.7B](https://github.com/QwenLM/Qwen3-ASR) for Russian-capable speech recognition. They are not included in TalkToMe: TranslateGemma has its own translation template and license/access conditions, while Qwen3-ASR needs a different speech runtime. They need separate integration and evaluation on real dictation recordings before becoming one-click choices.
 
 ### Advanced Windows setups
 
@@ -143,7 +150,7 @@ Open **Settings** from the result window or the menu-bar / notification-area ico
 
 Mac preferences and downloaded models live under `~/Library/Application Support/TalkToMe/`. API keys go into the login Keychain for each server origin. Windows stores new preferences and models under `%LOCALAPPDATA%\TalkToMe` and continues using an existing installation’s `settings.json` if present. Saved server keys are encrypted for the current Windows user and server origin.
 
-Speech activity detection filters silence before source-language transcription. Both clients send the transcript as data, request `enable_thinking: false`, and reject truncated, empty, or reasoning-bearing completions. The recognizer stays loaded between utterances. [Default editing prompt](Shared/EnglishPrompt.txt) · [Qwen model card](https://huggingface.co/Qwen/Qwen3.6-35B-A3B)
+Speech activity detection filters silence before source-language transcription. Both clients send the transcript as data and request `enable_thinking: false`. Bundled translators also use a constrained JSON response with one final-text field. Only that decoded field can be inserted; raw commentary, extra fields, truncated/empty responses, reasoning tags and unusually large expansions are rejected. This validates the output format, not the correctness of every sentence. Custom servers keep the existing plain-text API. The recognizer stays loaded between utterances. [Default editing prompt](Shared/EnglishPrompt.txt) · [Local output format](Shared/LocalEditing.json)
 
 Recording begins with the hotkey. The latest recording, transcript and English result live in memory. Starting a new recording replaces the previous result. Preferences and downloaded models persist between launches. Explicitly copying a result places it on the system clipboard. A separately managed server controls its own logging.
 
