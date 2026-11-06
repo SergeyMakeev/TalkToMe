@@ -86,7 +86,12 @@ if __name__ == "__main__":
                 cuda_bin = toolkit / "bin"
             for name in ("cudart64_13.dll", "cublas64_13.dll", "cublasLt64_13.dll"):
                 shutil.copy2(cuda_bin / name, gpu / name)
-            shutil.copy2(toolkit / "EULA.txt", gpu / "CUDA-EULA.txt")
+            # Minimal CUDA installers omit documentation, including the EULA.
+            # Keep the license in every distribution even with that CI install.
+            cuda_license = toolkit / "EULA.txt"
+            if not cuda_license.is_file():
+                cuda_license = ROOT / "Shared/CUDA-13.0-EULA.txt"
+            shutil.copy2(cuda_license, gpu / "CUDA-EULA.txt")
             cuda_options = [f"-DCUDAToolkit_ROOT={toolkit}", f"-DCMAKE_CUDA_COMPILER={toolkit / 'bin/nvcc.exe'}"]
             build(llama, "llama-server", gpu, "llama-server.exe",
                   ["-DLLAMA_BUILD_UI=OFF", "-DLLAMA_OPENSSL=OFF", "-DLLAMA_BUILD_TESTS=OFF", *cuda_options], avx2=True, cuda=True)
