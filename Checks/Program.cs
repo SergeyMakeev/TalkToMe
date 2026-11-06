@@ -21,10 +21,21 @@ internal static class Program
         }
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        if (args.Length is 3 or 4 && args[0] == "--local-models")
+        if (args.Length is 3 or 4 && args[0] == "--benchmark")
+        {
+            if (args.Length == 4 && args[3] is not ("portable" or "cpu" or "auto")) throw new ArgumentException("Use --benchmark model-directory sample.wav [auto|cpu|portable].");
+            try { PerformanceCheck.Benchmark(args[1], args[2], args.Length == 4 ? args[3] : "auto").GetAwaiter().GetResult(); return 0; }
+            catch (Exception error) { Console.Error.WriteLine(error); return 1; }
+        }
+        if (args.Length is >= 3 and <= 5 && args[0] == "--local-models")
         {
             // Exercise first install, cached install and inference without a microphone or user settings.
-            try { CheckLocalModels(args[1], args[2], args.Length == 4 ? args[3] : "qwen08").GetAwaiter().GetResult(); return 0; }
+            try { CheckLocalModels(args[1], args[2], args.Length >= 4 ? args[3] : "qwen08", args.Length == 5 ? args[4] : "base").GetAwaiter().GetResult(); return 0; }
+            catch (Exception error) { Console.Error.WriteLine(error); return 1; }
+        }
+        if (args is ["--gpu-check", var modelDirectory, var audioSample])
+        {
+            try { GpuCheck.Run(modelDirectory, audioSample).GetAwaiter().GetResult(); return 0; }
             catch (Exception error) { Console.Error.WriteLine(error); return 1; }
         }
         if (args is ["--field"]) { RunField(); return 0; }
@@ -38,6 +49,7 @@ internal static class Program
         }
         CheckDownload().GetAwaiter().GetResult();
         CheckSettings();
+        PerformanceCheck.Check();
         foreach (string bad in new[] { "length", "tool_calls", "" })
             Reject(JsonSerializer.Serialize(new { choices = new[] { new { finish_reason = bad, message = new { content = "Partial" } } } }));
         Reject("""{"choices":[{"finish_reason":"stop","message":{"reasoning_content":"thought","content":"Final"}}]}""");
@@ -159,10 +171,11 @@ internal static class Program
         }
         finally { dir.Delete(recursive: true); }
     }
-    private static async Task CheckLocalModels(string directory, string sample, string translation)
+    private static async Task CheckLocalModels(string directory, string sample, string translation, string speechModel)
     {
         var settings = Settings.Defaults(Environment.CurrentDirectory);
         settings.Translation = translation;
+        settings.SpeechModel = speechModel;
         settings.Validate();
         settings.ModelDirectory = Path.GetFullPath(directory);
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(25));
@@ -177,13 +190,18 @@ internal static class Program
         using var pcm = new MemoryStream();
         wav.CopyTo(pcm);
         using var recognizer = new Recognizer(settings);
-        string text = await recognizer.RunAsync(pcm.ToArray(), "en", token).ConfigureAwait(false);
+        var metrics = new ProcessingMetrics(settings, pcm.Length / 32000d, "en");
+        string text = await recognizer.RunAsync(pcm.ToArray(), "en", token, metrics).ConfigureAwait(false);
         Console.WriteLine(text);
         Assert(text.Contains("country", StringComparison.OrdinalIgnoreCase), "bundled Whisper JFK sample");
         using var translator = new EnglishEditor(settings);
-        string result = await translator.EditAsync("У меня два кота.", token).ConfigureAwait(false);
+        string result = await translator.EditAsync("У меня два кота.", token, metrics).ConfigureAwait(false);
         Console.WriteLine(result);
         Assert(result.Contains("cat", StringComparison.OrdinalIgnoreCase), "bundled Qwen Russian to English");
+        metrics.Finish("model check");
+        Console.WriteLine(metrics.Json());
+        if (Environment.GetEnvironmentVariable("TALKTOME_EXPECT_BACKEND") is { Length: > 0 } expected)
+            Assert(metrics.SpeechBackend.StartsWith(expected) && metrics.TranslationBackend.StartsWith(expected), "expected inference backends");
     }
     private static string Parse(string json)
     { using var doc = JsonDocument.Parse(json); return EnglishEditor.CompleteText(doc.RootElement); }

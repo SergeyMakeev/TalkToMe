@@ -35,9 +35,10 @@ internal sealed class DictationWindow : Form
     private readonly NotifyIcon tray = new() { Text = "TalkToMe" };
     private readonly System.Windows.Forms.Timer timer = new() { Interval = 30 };
     private readonly CancellationTokenSource lifetime = new();
-    private readonly List<double> timings = [];
+    private readonly List<ProcessingMetrics> performance = [];
     private readonly Label status = new() { AutoSize = true, MaximumSize = new Size(640, 0) };
-    private readonly Label timingLabel = new() { AutoSize = true };
+    private readonly Label timingLabel = new() { AutoSize = true, MaximumSize = new Size(640, 0) };
+    private readonly Button performanceButton = new() { Text = "Performance…", AutoSize = true, Enabled = false };
     private readonly TextBox original = TextArea(true), english = TextArea(false);
     private readonly Button retry = new() { Text = "Retry processing", AutoSize = true, Enabled = false };
     private readonly Button cancel = new() { Text = "Cancel", AutoSize = true, Enabled = false };
@@ -103,7 +104,10 @@ internal sealed class DictationWindow : Form
         preferences.Click += async (_, _) => await ConfigureAsync();
         actions.Controls.AddRange([copyEnglish, copySource, retry, cancel, preferences, quit]);
         layout.Controls.Add(actions, 0, 7);
-        layout.Controls.Add(timingLabel, 0, 8);
+        var timingRow = Row();
+        timingRow.Controls.AddRange([timingLabel, performanceButton]);
+        performanceButton.Click += (_, _) => ShowPerformance();
+        layout.Controls.Add(timingRow, 0, 8);
         layout.Controls.Add(new Label { AutoSize = true, Text = "Close to keep dictating. Open or quit TalkToMe from the notification area." }, 0, 9);
 
         tray.ContextMenuStrip = new ContextMenuStrip { ImageList = icons.Commands };
@@ -141,6 +145,17 @@ internal sealed class DictationWindow : Form
     {
         var box = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 135 };
         box.Items.AddRange(items); box.SelectedIndex = selected; return box;
+    }
+
+    private void ShowPerformance()
+    {
+        using var dialog = new Form { Text = "TalkToMe performance", Size = new Size(760, 650), StartPosition = FormStartPosition.CenterParent };
+        var report = new TextBox { Multiline = true, ReadOnly = true, Dock = DockStyle.Fill, ScrollBars = ScrollBars.Both,
+            WordWrap = false, Font = new Font("Consolas", 10), Text = string.Join("\r\n\r\n--------------------\r\n\r\n", performance.AsEnumerable().Reverse().Select(m => m.Report())) };
+        var copy = new Button { Text = "Copy report", Dock = DockStyle.Bottom, Height = 36 };
+        copy.Click += (_, _) => Copy(report.Text);
+        dialog.Controls.Add(report); dialog.Controls.Add(copy);
+        dialog.ShowDialog(this);
     }
 
     protected override void OnShown(EventArgs e)
@@ -368,49 +383,76 @@ internal sealed class DictationWindow : Form
     private async Task ProcessSessionAsync(Session s, bool insert)
     {
         var token = s.Cancel.Token;
+        string language = insert ? s.Language : settings.Language;
+        var metrics = new ProcessingMetrics(settings, (s.Audio?.Length ?? 0) / 32000d, language, !insert);
+        metrics.StagesMs["audio_finalize"] = insert ? s.Latency.Elapsed.TotalMilliseconds : 0;
+        string outcome = "failed";
         dispatched = false;
         SetBusy(true);
         try
         {
-            string language = insert ? s.Language : settings.Language;
             if (s.Transcript.Length == 0 || language != s.Language)
             {
                 SetStatus("Transcribing speech…", "Transcribing…");
-                s.Transcript = await asr.RunAsync(s.Audio!, language, token);
+                s.Transcript = await asr.RunAsync(s.Audio!, language, token, metrics);
                 if (current != s || exiting) return;
                 s.Language = language;
                 original.Text = s.Transcript;
                 english.Clear();
             }
+            else metrics.ReusedTranscript = true;
             if (s.Transcript.Length == 0)
             {
                 s.Audio = null;
+                outcome = "no speech";
                 SetStatus("No speech detected.", "No speech detected", true);
                 return;
             }
             if (settings.Translation != "transcript") SetStatus("Writing English…", "Writing English…");
-            var result = await editor.EditAsync(s.Transcript, token);
+            var result = await editor.EditAsync(s.Transcript, token, metrics);
             if (current != s || exiting) return;
             english.Text = result.ReplaceLineEndings();
+            var insertion = Stopwatch.StartNew();
             string? held = !insert || settings.CopyOnly ? "Review requested." : await Insertion.TryAsync(Handle, s.Target, s.ClipboardSequence, shortcut.Key, result, token, () =>
             {
                 dispatched = true; cancel.Enabled = false;
-                s.Latency.Stop(); timings.Add(s.Latency.Elapsed.TotalMilliseconds);
-                var ordered = timings.Order().ToArray();
-                double median = (ordered[(ordered.Length - 1) / 2] + ordered[ordered.Length / 2]) / 2;
-                timingLabel.Text = $"Release to input dispatch · last {s.Latency.Elapsed.TotalSeconds:F2}s · median {median / 1000:F2}s · p95 {ordered[(int)Math.Ceiling(ordered.Length * .95) - 1] / 1000:F2}s · n={ordered.Length}";
+                metrics.StagesMs["insertion"] = insertion.Elapsed.TotalMilliseconds;
+                metrics.Finish("sent");
             });
+            if (!dispatched) metrics.StagesMs["insertion"] = insertion.Elapsed.TotalMilliseconds;
+            outcome = held == null ? "sent" : "ready to copy";
             if (current != s || exiting) return;
             SetStatus(held == null ? "Text sent to the focused field. The result is also available here." :
                 held + " Review and copy the result here.", held == null ? "Text sent" : "Ready to copy  ·  Open TalkToMe", true);
         }
         catch (Exception ex)
         {
+            outcome = token.IsCancellationRequested ? "cancelled" : ex is TaskCanceledException ? "timed out" : "failed";
             if (current == s && !exiting)
                 SetStatus(ex is TaskCanceledException ? "Processing timed out. Check llama-server and retry." : ex.Message,
                     "Processing failed  ·  Open TalkToMe to retry", true);
         }
-        finally { if (current == s && !exiting) SetBusy(false); }
+        finally
+        {
+            metrics.Finish(token.IsCancellationRequested ? "cancelled" : outcome);
+            performance.Add(metrics);
+            if (performance.Count > 20) performance.RemoveAt(0);
+            if (!exiting)
+            {
+                performanceButton.Enabled = true;
+                if (current == s)
+                {
+                    var completed = performance.Where(m => !m.Retry && m.Outcome is "sent" or "ready to copy").Select(m => m.TotalMs).Order().ToArray();
+                    timingLabel.Text = metrics.Summary;
+                    if (completed.Length > 0)
+                    {
+                        double median = (completed[(completed.Length - 1) / 2] + completed[completed.Length / 2]) / 2;
+                        timingLabel.Text += $"\r\nRecent total · median {median / 1000:F2}s · p95 {completed[(int)Math.Ceiling(completed.Length * .95) - 1] / 1000:F2}s · n={completed.Length}";
+                    }
+                    SetBusy(false);
+                }
+            }
+        }
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)

@@ -16,8 +16,8 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
-    timeout-minutes: 60
+    runs-on: windows-2022
+    timeout-minutes: 120
     env:
       APP_VERSION: ${{ inputs.version || '1.0.0' }}
     steps:
@@ -28,14 +28,29 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
+      - name: Install build-time CUDA toolkit
+        uses: Jimver/cuda-toolkit@v0.2.30
+        with:
+          cuda: '13.0.0'
+          method: network
+          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "visual_studio_integration", "crt", "thrust", "nvvm"]'
 
       - name: Build bundled speech and translation engines
-        run: python Shared/build_engines.py build/engines
+        run: python Shared/build_engines.py build/engines --cuda
       - name: Build desktop app and checks
         run: dotnet build Checks/TalkToMe.Checks.csproj --configuration Release "-p:Version=$env:APP_VERSION"
       - name: Run noninteractive checks
         run: dotnet run --project Checks/TalkToMe.Checks.csproj --configuration Release --no-build
       - name: Download the default models, transcribe and translate using the bundled engines
+        run: dotnet run --project Checks -c Release --no-build -- --local-models build/model-check build/native-src/whisper.cpp/samples/jfk.wav
+      - name: Verify portable CPU fallback
+        env:
+          TALKTOME_CPU: portable
+        run: dotnet run --project Checks -c Release --no-build -- --local-models build/model-check build/native-src/whisper.cpp/samples/jfk.wav
+      - name: Verify automatic fallback with NVIDIA devices hidden
+        env:
+          CUDA_VISIBLE_DEVICES: '-1'
+          TALKTOME_EXPECT_BACKEND: CPU
         run: dotnet run --project Checks -c Release --no-build -- --local-models build/model-check build/native-src/whisper.cpp/samples/jfk.wav
       - name: Check Python worker syntax
         run: python -m py_compile asr/worker.py
@@ -55,7 +70,7 @@ jobs:
           $package = 'build/windows-release'
           dotnet publish Desktop/TalkToMe.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true "-p:Version=$env:APP_VERSION" -o $package
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          foreach ($file in 'TalkToMe.exe','engines/TalkToMeSpeech.dll','engines/llama-server.exe') {
+          foreach ($file in 'TalkToMe.exe','engines/TalkToMeSpeechHost.exe','engines/llama-server.exe','engines/avx2/TalkToMeSpeechHost.exe','engines/avx2/llama-server.exe','engines/cuda/TalkToMeSpeechHost.exe','engines/cuda/llama-server.exe','engines/cuda/cudart64_13.dll','engines/cuda/cublas64_13.dll','engines/cuda/cublasLt64_13.dll','engines/cuda/CUDA-EULA.txt') {
             if (!(Test-Path -LiteralPath (Join-Path $package $file))) { throw "Missing release file: $file" }
           }
           New-Item -ItemType Directory -Path "$package/asr"

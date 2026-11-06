@@ -1,60 +1,103 @@
+using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 
 namespace TalkToMe;
 
+// Native inference is isolated so a CUDA abort, device reset or missing DLL cannot crash the UI.
 internal sealed class BundledSpeech : IDisposable
 {
-    private const string Library = "engines/TalkToMeSpeech.dll";
-    [DllImport(Library)] private static extern nint ttm_open([MarshalAs(UnmanagedType.LPUTF8Str)] string path, [MarshalAs(UnmanagedType.I1)] bool gpu);
-    [DllImport(Library)] private static extern void ttm_close(nint model);
-    [DllImport(Library)] private static extern nint ttm_new_job();
-    [DllImport(Library)] private static extern void ttm_cancel(nint job);
-    [DllImport(Library)] private static extern void ttm_free_job(nint job);
-    [DllImport(Library)] private static extern void ttm_free_text(nint text);
-    [DllImport(Library)] private static extern nint ttm_transcribe(nint model, nint job, float[] samples, int count,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string language, [MarshalAs(UnmanagedType.LPUTF8Str)] string glossary,
-        [MarshalAs(UnmanagedType.LPUTF8Str)] string vad, int threads);
+    private Process? worker;
+    private NativeEngines.GpuDevice? device;
+    private bool runningGpu, cpuFallback;
+    private string fallbackReason = "";
+    internal string Backend { get; private set; } = "Not loaded";
+    internal int? ProcessId => worker is { HasExited: false } ? worker.Id : null;
 
-    private readonly object sync = new();
-    private nint model;
-    internal static string LibraryPath => Path.Combine(AppContext.BaseDirectory, Library);
-
-    public string Run(byte[]? pcm, string language, Settings settings, CancellationToken token)
+    public async Task<string> RunAsync(byte[]? pcm, string language, Settings settings, CancellationToken token, ProcessingMetrics? metrics = null)
     {
-        lock (sync)
+        token.ThrowIfCancellationRequested();
+        var speech = ModelDownload.Get(settings.SpeechModel);
+        var vad = ModelDownload.Get("activity");
+        if (!speech.Installed(settings.ModelDirectory) || !vad.Installed(settings.ModelDirectory))
+            throw new IOException("Open Settings → Models to download the speech models.");
+        try
         {
-            token.ThrowIfCancellationRequested();
-            if (!File.Exists(LibraryPath)) throw new IOException("The speech engine is missing. Extract the complete TalkToMe download and reopen the app.");
-            var speech = ModelDownload.Get(settings.SpeechModel);
-            var vad = ModelDownload.Get("activity");
-            if (!speech.Installed(settings.ModelDirectory) || !vad.Installed(settings.ModelDirectory))
-                throw new IOException("Open Settings → Models to download the speech models.");
-            if (model == 0) model = ttm_open(speech.PathIn(settings.ModelDirectory), false);
-            if (model == 0) throw new IOException("Whisper could not load. Check available memory or download the speech models again.");
-            if (pcm == null) return "";
-            var samples = new float[pcm.Length / 2];
-            var shorts = MemoryMarshal.Cast<byte, short>(pcm);
-            for (int i = 0; i < samples.Length; i++) samples[i] = shorts[i] / 32768f;
-            if (samples.Length < 1600 || !samples.Any(s => Math.Abs(s) > 0.0001f)) return "";
-            var job = ttm_new_job();
-            try
+            for (int attempt = 0; ; attempt++)
             {
-                using var cancel = token.Register(() => ttm_cancel(job));
-                var result = ttm_transcribe(model, job, samples, samples.Length, language, string.Join(", ", settings.Glossary),
-                    vad.PathIn(settings.ModelDirectory), Math.Clamp(Environment.ProcessorCount / 2, 1, 8));
                 try
                 {
-                    token.ThrowIfCancellationRequested();
-                    return Marshal.PtrToStringUTF8(result)?.Trim() ?? throw new IOException("Whisper could not finish transcription.");
+                    if (worker == null)
+                    {
+                        using var load = metrics?.Measure("speech_load");
+                        device ??= await NativeEngines.GpuAsync(settings.UseGpu, token);
+                        runningGpu = !cpuFallback && device.Id != null;
+                        if (!runningGpu && !cpuFallback) fallbackReason = device.Reason;
+                        string executable = runningGpu ? NativeEngines.CudaPath("TalkToMeSpeechHost.exe") : NativeEngines.PathFor("TalkToMeSpeechHost.exe");
+                        if (!File.Exists(executable)) throw new IOException("The speech engine is missing. Extract the complete TalkToMe download and reopen the app.");
+                        var info = NativeEngines.ProcessInfo(executable);
+                        info.ArgumentList.Add("--worker");
+                        worker = Process.Start(info) ?? throw new IOException("Could not start the speech engine.");
+                        worker.ErrorDataReceived += (_, _) => { };
+                        worker.BeginErrorReadLine();
+                        await SendAsync(new { model = speech.PathIn(settings.ModelDirectory), gpu = runningGpu }, token);
+                        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+                        deadline.CancelAfter(TimeSpan.FromSeconds(runningGpu ? 60 : 180));
+                        JsonElement ready;
+                        try { ready = await ReplyAsync(deadline.Token); }
+                        catch (OperationCanceledException) when (!token.IsCancellationRequested) { throw new IOException("Speech engine startup timed out."); }
+                        if (!ready.GetProperty("ready").GetBoolean() || (runningGpu && ready.GetProperty("backend").GetString() != "CUDA"))
+                            throw new IOException("The speech engine did not initialize its selected backend.");
+                        Backend = runningGpu ? $"CUDA · {ready.GetProperty("device").GetString()}" : NativeEngines.Description("TalkToMeSpeechHost.exe");
+                    }
+                    if (worker.HasExited) throw new IOException("The speech engine stopped.");
+                    if (pcm == null || IsSilent(pcm)) return "";
+                    using var decode = metrics?.Measure("speech_decode");
+                    using var inferenceDeadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+                    inferenceDeadline.CancelAfter(TimeSpan.FromSeconds(Math.Max(runningGpu ? 60 : 300, pcm.Length / 32000d * 4)));
+                    try
+                    {
+                        await SendAsync(new { pcm, language, glossary = string.Join(", ", settings.Glossary),
+                            vad = vad.PathIn(settings.ModelDirectory), threads = Math.Clamp(Environment.ProcessorCount / 2, 1, 8) }, inferenceDeadline.Token);
+                        var reply = await ReplyAsync(inferenceDeadline.Token);
+                        return reply.GetProperty("text").GetString()?.Trim() ?? throw new IOException("Whisper returned no result.");
+                    }
+                    catch (OperationCanceledException) when (!token.IsCancellationRequested) { throw new IOException("Speech inference timed out."); }
                 }
-                finally { ttm_free_text(result); }
+                catch (Exception ex) when (attempt == 0 && runningGpu && !token.IsCancellationRequested &&
+                    ex is IOException or System.ComponentModel.Win32Exception or JsonException)
+                {
+                    StopWorker();
+                    cpuFallback = true;
+                    fallbackReason = "The CUDA speech engine failed; this recording was retried on CPU. GPU remains disabled for speech until its settings change or the app restarts.";
+                }
             }
-            finally { ttm_free_job(job); }
+        }
+        catch { StopWorker(); throw; }
+        finally
+        {
+            if (metrics != null) { metrics.SpeechBackend = Backend; metrics.SpeechFallbackReason = fallbackReason; }
         }
     }
 
-    public void Dispose()
+    private static bool IsSilent(byte[] pcm)
     {
-        lock (sync) { if (model != 0) ttm_close(model); model = 0; }
+        if (pcm.Length < 3200) return true;
+        foreach (short sample in MemoryMarshal.Cast<byte, short>(pcm)) if (Math.Abs((int)sample) > 3) return false;
+        return true;
     }
+    private async Task SendAsync(object request, CancellationToken token)
+    {
+        await worker!.StandardInput.WriteLineAsync(JsonSerializer.Serialize(request).AsMemory(), token);
+        await worker.StandardInput.FlushAsync(token);
+    }
+    private async Task<JsonElement> ReplyAsync(CancellationToken token)
+    {
+        string line = await worker!.StandardOutput.ReadLineAsync(token) ?? throw new IOException("The speech engine stopped.");
+        using var json = JsonDocument.Parse(line);
+        if (json.RootElement.TryGetProperty("error", out _)) throw new IOException("The speech engine could not complete the request.");
+        return json.RootElement.Clone();
+    }
+    private void StopWorker() { NativeEngines.Stop(worker); worker?.Dispose(); worker = null; }
+    public void Dispose() { StopWorker(); device = null; cpuFallback = false; runningGpu = false; Backend = "Not loaded"; fallbackReason = ""; }
 }

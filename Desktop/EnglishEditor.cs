@@ -10,6 +10,7 @@ namespace TalkToMe;
 internal sealed class EnglishEditor(Settings config) : IDisposable
 {
     private LocalServer server = new(config);
+    internal int? ProcessId => server.ProcessId;
     private static readonly JsonSerializerOptions TranscriptJson = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
     public Task PrepareAsync(CancellationToken token) => server.PrepareAsync(token);
     private HttpClient http = CreateClient(config);
@@ -18,7 +19,7 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
 
     public void Reconfigure(Settings next)
     {
-        if (next.Translation != config.Translation || next.LocalServer != config.LocalServer || next.ServerUrl != config.ServerUrl || next.Model != config.Model ||
+        if (next.Translation != config.Translation || next.UseGpu != config.UseGpu || next.LocalServer != config.LocalServer || next.ServerUrl != config.ServerUrl || next.Model != config.Model ||
             next.ProtectedApiKey != config.ProtectedApiKey || next.UseEnvironmentKey != config.UseEnvironmentKey)
         {
             server.Dispose();
@@ -41,11 +42,34 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
         return reader.ReadToEnd().Trim();
     }
 
-    public async Task<string> EditAsync(string transcript, CancellationToken token)
+    public async Task<string> EditAsync(string transcript, CancellationToken token, ProcessingMetrics? metrics = null)
     {
         if (string.IsNullOrWhiteSpace(transcript)) return "";
         if (config.Translation == "transcript") return transcript;
-        await PrepareAsync(token);
+        try
+        {
+            try { return await RequestAsync(transcript, token, metrics); }
+            catch (Exception ex) when (!token.IsCancellationRequested && server.RunningGpu &&
+                (ex is IOException or TaskCanceledException || ex is HttpRequestException httpError &&
+                (httpError.StatusCode == null || (int)httpError.StatusCode >= 500)))
+            {
+                if (!await server.FallBackAsync(token)) throw;
+                return await RequestAsync(transcript, token, metrics);
+            }
+        }
+        finally
+        {
+            if (metrics != null) { metrics.TranslationBackend = server.Backend; metrics.TranslationFallbackReason = server.FallbackReason; }
+        }
+    }
+
+    private async Task<string> RequestAsync(string transcript, CancellationToken token, ProcessingMetrics? metrics)
+    {
+        using (metrics?.Measure("translation_ready")) await PrepareAsync(token);
+        using var inference = metrics?.Measure("translation_request");
+        using var gpuDeadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+        if (server.RunningGpu) gpuDeadline.CancelAfter(TimeSpan.FromSeconds(config.TimeoutSeconds));
+        token = gpuDeadline.Token;
         using var request = new HttpRequestMessage(HttpMethod.Post, server.Endpoint.AbsoluteUri.TrimEnd('/') + "/chat/completions");
         var key = server.Key;
         if (!string.IsNullOrWhiteSpace(key)) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
@@ -63,8 +87,9 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
         });
         using var response = await http.SendAsync(request, token);
         if (!response.IsSuccessStatusCode)
-            throw new HttpRequestException($"llama-server returned HTTP {(int)response.StatusCode}. Check serverUrl, model, API key and context size.");
+            throw new HttpRequestException($"llama-server returned HTTP {(int)response.StatusCode}. Check serverUrl, model, API key and context size.", null, response.StatusCode);
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
+        metrics?.ReadTranslationDetails(json.RootElement);
         return CompleteText(json.RootElement);
     }
 

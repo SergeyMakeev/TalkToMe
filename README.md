@@ -62,7 +62,33 @@ You can cancel setup and open **Settings → Models** again. Completed downloads
 
 Existing preferences keep their configured Python/CUDA speech engine and server. You can switch either one in **Models**. For a new manual faster-whisper environment, `setup.ps1` (or `setup.ps1 -Cpu`) is still available and requires x64 Python 3.11 with the Windows `py` launcher. [faster-whisper runtime requirements](https://github.com/SYSTRAN/faster-whisper#requirements)
 
-To build the bundled path from source, install the .NET 8 SDK, Git, CMake 3.26+, Visual Studio C++ x64 build tools and Python 3.10+. From the repository root run `py -3 Shared/build_engines.py build/engines`, then `dotnet publish Desktop/TalkToMe.csproj -c Release -r win-x64 --self-contained true -o build/app`. Open **TalkToMe.cmd**.
+To build the bundled path from source, install the .NET 8 SDK, Git, CMake 3.26+, Visual Studio 2022 C++ x64 build tools, CUDA Toolkit 13.0 and Python 3.10+. From the repository root run `py -3 Shared/build_engines.py build/engines --cuda`, then `dotnet publish Desktop/TalkToMe.csproj -c Release -r win-x64 --self-contained true -o build/app`. CUDA is a build dependency only. For CPU-only development, omit `--cuda` and use `dotnet build Desktop` instead of publishing. Open **TalkToMe.cmd**.
+
+### Windows performance and diagnostics
+
+Windows automatically uses the bundled CUDA engines on a compatible NVIDIA GPU. The runtime includes kernels for RTX 20, 30, 40 and 50 series GPUs, including Blackwell RTX 5070. Users need their NVIDIA graphics driver, but do not need Python, the CUDA toolkit, a separate server, or a runtime installer. NVIDIA driver compatibility is checked by launching a private GPU probe. Older drivers, unsupported GPUs and computers without NVIDIA graphics use the CPU automatically. AMD and Intel GPU acceleration is not included in the Windows build. macOS continues to use its bundled Metal backend.
+
+Under **Settings → Models**, **Use NVIDIA GPU when available** is enabled by default. Turn it off to compare CPU performance. The app selects optimized AVX2/FMA CPU engines when supported, with portable engines for older CPUs. Keep the entire `engines` folder, including `avx2` and `cuda`, beside the executable. The v0.2.0 release only contains the slower portable CPU engines.
+
+Speech and translation run in separate private helper processes. If a CUDA engine fails to load or stops during inference, the app stops that helper and retries the pending work once on CPU. That engine stays on CPU until its settings change or the app restarts. Cancellation stops the requested speech work without disabling GPU eligibility. Custom Python engines and user-managed translation servers keep their existing behavior.
+
+After processing, the main window shows speech, translation and total time. Open **Performance…** to see and copy the last 20 attempts, including retries and failures. Reports show the actual speech and translation backends, GPU device name, translation layers offloaded, and any CPU fallback reason. Reports contain model choices, CPU information, audio duration and timing, but no audio, transcript, prompt, credentials or server address. They stay in memory until the app quits. Timings include failed GPU attempts when a CPU retry was needed.
+
+| Timing | What it measures |
+|---|---|
+| `audio_finalize` | Microphone flush after releasing the shortcut |
+| `speech_queue` | Waiting for a previous recognition or startup warmup |
+| `speech_load` | Loading the listening model, when needed |
+| `speech_decode` | Speech detection, automatic language detection and transcription |
+| `translation_ready` | Starting/loading the translator or checking its readiness |
+| `translation_request` | Translation HTTP request, including prompt processing and generation |
+| `insertion` | Waiting to dispatch the text, or determining it must be copied |
+
+All durations are milliseconds. Total excludes recording time and ends when text is dispatched or the result is ready to copy. Llama.cpp's `prompt_ms`, `predicted_ms`, token counts and tokens/second appear in `TranslationDetails` when provided by the server. These are parts of `translation_request`, so do not add them to the total again. Missing stages did not run; for example, a resident speech model does not need `speech_load`. Retry may reuse the transcript and is marked accordingly.
+
+For reproducible developer measurements, build `Checks` and run `dotnet run --project Checks -c Release --no-build -- --benchmark build/model-check build/native-src/whisper.cpp/samples/jfk.wav`. It requires models installed by the `--local-models` check. The benchmark runs once cold and three times warm with 16 kHz mono PCM16 audio and changing Russian translation requests. Append `cpu` to disable CUDA or `portable` to compare the compatibility engines. Compare warm runs on the same machine without other inference or builds running. `TALKTOME_CPU=portable` also forces compatibility engines for troubleshooting.
+
+On a machine with an NVIDIA GPU, run `dotnet run --project Checks -c Release --no-build -- --gpu-check build/model-check build/native-src/whisper.cpp/samples/jfk.wav` to check real CUDA inference, recovery after terminating the test helpers, GPU startup failure and cancellation. It only terminates helpers started by that check. The Windows CI also tests automatic CPU fallback with CUDA devices hidden and verifies that the archive includes the GPU runtime and its license.
 
 To use an existing llama-server, select **Use my own server** in **Models**. Open **Server**, enter its URL (for example, `http://my-gpu-host:8080/v1`), model alias and optional API key. The client calls `POST /v1/chat/completions`.
 

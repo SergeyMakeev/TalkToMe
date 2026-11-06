@@ -12,6 +12,7 @@ internal sealed class Settings
     public LocalServerSettings? LocalServer { get; set; }
     // Missing keys in existing preferences select the original user-configured engines.
     public bool BundledSpeech { get; set; }
+    public bool UseGpu { get; set; } = true;
     public string SpeechModel { get; set; } = "base";
     public string Translation { get; set; } = "server";
     [JsonIgnore] public bool LocalTranslation => Translation is "qwen08" or "qwen2";

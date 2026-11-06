@@ -54,6 +54,7 @@ internal sealed class SettingsDialog : Form
             s.Translation = ids[translation.SelectedIndex];
         }
         collect.Add(SetModels);
+        Check("Use NVIDIA GPU when available (automatic CPU fallback)", settings.UseGpu, (s,v) => s.UseGpu = v);
         var summary = new Label { AutoSize = true, MaximumSize = new(420, 0) };
         Row("", summary);
         var verify = new Button { Text = "Verify downloaded models", AutoSize = true };

@@ -13,7 +13,7 @@ internal sealed class Recognizer(Settings settings) : IDisposable
     // The caller waits for outstanding reads before applying a settings draft.
     public bool Reconfigure(Settings next)
     {
-        bool reload = settings.BundledSpeech != next.BundledSpeech || settings.SpeechModel != next.SpeechModel ||
+        bool reload = settings.BundledSpeech != next.BundledSpeech || settings.SpeechModel != next.SpeechModel || settings.UseGpu != next.UseGpu ||
             settings.Python != next.Python || settings.WhisperDirectory != next.WhisperDirectory ||
             settings.Device != next.Device || settings.ComputeType != next.ComputeType ||
             settings.CudaLibraryDirectory != next.CudaLibraryDirectory;
@@ -54,15 +54,16 @@ internal sealed class Recognizer(Settings settings) : IDisposable
     }
 
     // A cancelled read must discard the entire pipe, including any late reply.
-    public async Task<string> RunAsync(byte[]? pcm, string language, CancellationToken token)
+    public async Task<string> RunAsync(byte[]? pcm, string language, CancellationToken token, ProcessingMetrics? metrics = null)
     {
-        await gate.WaitAsync(token);
+        using (metrics?.Measure("speech_queue")) await gate.WaitAsync(token);
         try
         {
             if (settings.BundledSpeech)
-                return await Task.Run(() => bundled.Run(pcm, language, settings, token), token);
-            await EnsureWorkerAsync(token);
+                return await bundled.RunAsync(pcm, language, settings, token, metrics);
+            using (metrics?.Measure("speech_load")) await EnsureWorkerAsync(token);
             if (pcm is null) return ""; // Warm up the resident model.
+            using var decode = metrics?.Measure("speech_decode");
             string request = JsonSerializer.Serialize(new { pcm, language = language == "auto" ? null : language, glossary = settings.Glossary });
             await worker!.StandardInput.WriteLineAsync(request.AsMemory(), token);
             var reply = await ReplyAsync(token);
