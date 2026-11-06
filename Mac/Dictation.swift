@@ -229,7 +229,8 @@ import AVFoundation
                     if !cancelInference {
                         guard text.lowercased().contains("country") else { throw Failure("Shutdown test transcription failed.") }
                         print("Speech model loaded for normal application Quit (\(p.useMetal ? "Metal" : "CPU")).")
-                        NSApp.terminate(nil)
+                        fflush(stdout)
+                        scheduleCheckQuit()
                     }
                 } catch {
                     if !closing { fputs("\(error.localizedDescription)\n", stderr); exit(1) }
@@ -238,7 +239,8 @@ import AVFoundation
             if cancelInference {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                     print("Quit requested during speech processing.")
-                    NSApp.terminate(nil)
+                    fflush(stdout)
+                    scheduleCheckQuit()
                 }
             }
         } catch { fputs("\(error.localizedDescription)\n", stderr); exit(1) }

@@ -3,6 +3,16 @@ import Carbon.HIToolbox
 import SwiftUI
 import AVFoundation
 
+// AppKit's terminateLater path must be entered from a run-loop event, as with
+// Cmd+Q. Calling terminate inside a main-queue block can starve the async cleanup
+// that needs that same queue; a speech-check Task must also return before Quit.
+@MainActor func scheduleCheckQuit() {
+    let timer = Timer(timeInterval: 0.01, repeats: false) { _ in
+        MainActor.assumeIsolated { NSApp.terminate(nil) }
+    }
+    RunLoop.main.add(timer, forMode: .common)
+}
+
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var controller: Dictation!
     private var window: NSWindow!
@@ -45,7 +55,8 @@ import AVFoundation
                     exit(1)
                 }
                 print("Result window, Settings sheet and menu-bar icon appeared.")
-                NSApp.terminate(nil)
+                fflush(stdout)
+                scheduleCheckQuit()
             }
         }
         if CommandLine.arguments.contains("--check-shutdown") {
@@ -76,6 +87,9 @@ import AVFoundation
         if readyToTerminate { return .terminateNow }
         if termination == nil {
             termination = Task { @MainActor in
+                if CommandLine.arguments.contains("--check-window") || CommandLine.arguments.contains("--check-shutdown") {
+                    fputs("Beginning normal app shutdown.\n", stderr)
+                }
                 await controller.quit()
                 readyToTerminate = true
                 sender.reply(toApplicationShouldTerminate: true)
