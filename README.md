@@ -6,7 +6,7 @@ Download a versioned build from [GitHub Releases](https://github.com/SergeyMakee
 
 ## Install on macOS
 
-Use [macOS 0.2.5 preview 2](https://github.com/SergeyMakeev/TalkToMe/releases/tag/macos-v0.2.5-preview.2) for verified pasting into Slack and Visual Studio Code, Accessibility repair, the Quit crash fix, and MacBook shortcuts. Preview 1 was withdrawn; use preview 2. The latest stable release remains v0.2.1.
+Apple silicon users can use [macOS 0.2.6 preview 1](https://github.com/SergeyMakeev/TalkToMe/releases/tag/macos-v0.2.6-preview.1) for validated translation output and the optional Qwen 4B model, along with the Slack/VS Code paste, Accessibility, Quit, and shortcut fixes. This preview includes only the arm64 installer: Intel validation stopped on a model-download timeout. Intel users can keep [0.2.5 preview 2](https://github.com/SergeyMakeev/TalkToMe/releases/tag/macos-v0.2.5-preview.2). The latest stable release remains v0.2.1.
 
 1. On macOS 13 or later, download **TalkToMe-macOS-arm64.dmg** for Apple silicon or **TalkToMe-macOS-x86_64.dmg** for Intel. Open the disk image, drag **TalkToMe** onto **Applications**, eject the image, and open the installed app from Applications. For a CI build, extract the Actions artifact to get the DMG. For the **v0.1.0** release, extract the ZIP and move **TalkToMe.app** to Applications. [Releases](https://github.com/SergeyMakeev/TalkToMe/releases) · [Mac builds](https://github.com/SergeyMakeev/TalkToMe/actions/workflows/macos.yml)
 2. Launch TalkToMe. In **Settings → Dictation**, grant **Microphone** access for recording and **Accessibility** access for insertion into other apps. Select a microphone or follow the system default.
@@ -90,6 +90,8 @@ For fast Russian speech, try **Whisper Large v3 Turbo** and set **Dictation → 
 The 0.8B model produced omissions, untranslated text and explanatory prose in local checks. The 2B and 4B models passed six focused regression cases covering counting with an unrelated glossary, questions, spoken corrections, mixed technical dictation, quoted commands, and negation/numbers. These checks are not a broad translation benchmark, and formatting checks cannot detect every mistranslation. [Test inputs](Checks/TranslationCases.json)
 
 Potential future alternatives include [TranslateGemma 4B](https://huggingface.co/google/translategemma-4b-it) for dedicated translation and [Qwen3-ASR 0.6B/1.7B](https://github.com/QwenLM/Qwen3-ASR) for Russian-capable speech recognition. They are not included in TalkToMe: TranslateGemma has its own translation template and license/access conditions, while Qwen3-ASR needs a different speech runtime. They need separate integration and evaluation on real dictation recordings before becoming one-click choices.
+
+Another speech candidate is [Parakeet TDT 0.6B v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3), which supports Russian and English. It has a [native C++ runtime](https://github.com/NVIDIA/NeMo-Speech.cpp) and a Mac [Core ML/Swift integration](https://github.com/FluidInference/FluidAudio). That makes it a promising option for a future self-contained engine; it is not included or benchmarked in TalkToMe yet. Use the multilingual **v3** when evaluating Russian.
 
 ### Advanced Windows setups
 
