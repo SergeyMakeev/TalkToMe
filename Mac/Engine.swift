@@ -15,13 +15,11 @@ final class SpeechEngine {
 
     // NSApplication.terminate calls exit(), which does not release Swift owners.
     // Drain inference and free its buffers before ggml's global Metal destructor.
-    func close() async {
-        await withCheckedContinuation { continuation in
-            queue.async {
-                if let model = self.model { ttm_close(model); self.model = nil }
-                self.path = ""
-                continuation.resume()
-            }
+    func close(completion: @escaping @Sendable () -> Void) {
+        queue.async {
+            if let model = self.model { ttm_close(model); self.model = nil }
+            self.path = ""
+            completion()
         }
     }
 
@@ -85,16 +83,11 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         verified = false
         port = Int.random(in: 49152...65535)
     }
-    func close() async {
+    func close() {
         closing = true
         session.invalidateAndCancel()
         loopback.invalidateAndCancel()
-        let process = owned
         stop()
-        guard let process else { return }
-        // Give our helper time to release its model; never block AppKit's run loop.
-        for _ in 0..<50 where process.isRunning { try? await Task.sleep(nanoseconds: 100_000_000) }
-        if process.isRunning { kill(process.processIdentifier, SIGKILL) }
     }
     private func launch(_ p: Preferences, _ base: URL, key: String) throws {
         try Task.checkCancellation()

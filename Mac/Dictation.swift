@@ -245,19 +245,23 @@ import AVFoundation
             }
         } catch { fputs("\(error.localizedDescription)\n", stderr); exit(1) }
     }
-    func quit() async {
+    func quit(completion: @escaping @MainActor @Sendable () -> Void) {
         guard !closing else { return }
         closing = true
         refreshMenu = nil
-        let pending = task
         cancel()
         phase = .processing
         status = "Closing and releasing models…"
         keys.stop()
         for tone in tones { tone?.stop() }
         if let observer { NSWorkspace.shared.notificationCenter.removeObserver(observer); self.observer = nil }
-        await pending?.value
-        await speech.close()
-        await editor.close()
+        editor.close()
+        speech.close {
+            // AppKit runs a special termination loop after terminateLater. Reply
+            // through that run loop, without depending on MainActor task scheduling.
+            RunLoop.main.perform(inModes: [.common, .modalPanel]) {
+                MainActor.assumeIsolated { completion() }
+            }
+        }
     }
 }

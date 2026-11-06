@@ -18,7 +18,7 @@ import AVFoundation
     private var window: NSWindow!
     private var item: NSStatusItem!
     private let menu = NSMenu()
-    private var termination: Task<Void, Never>?
+    private var terminating = false
     private var readyToTerminate = false
     func applicationDidFinishLaunching(_ notification: Notification) {
         controller = Dictation()
@@ -85,13 +85,13 @@ import AVFoundation
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { show(); return true }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if readyToTerminate { return .terminateNow }
-        if termination == nil {
-            termination = Task { @MainActor in
-                if CommandLine.arguments.contains("--check-window") || CommandLine.arguments.contains("--check-shutdown") {
-                    fputs("Beginning normal app shutdown.\n", stderr)
-                }
-                await controller.quit()
-                readyToTerminate = true
+        if !terminating {
+            terminating = true
+            if CommandLine.arguments.contains("--check-window") || CommandLine.arguments.contains("--check-shutdown") {
+                fputs("Beginning normal app shutdown.\n", stderr)
+            }
+            controller.quit { [self] in
+                self.readyToTerminate = true
                 sender.reply(toApplicationShouldTerminate: true)
             }
         }
