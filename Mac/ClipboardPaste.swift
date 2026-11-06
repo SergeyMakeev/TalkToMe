@@ -15,13 +15,17 @@ import Carbon.HIToolbox
     private init(board: NSPasteboard, backup: [NSPasteboardItem]) {
         self.board = board; self.backup = backup
     }
-    static func place(_ text: String, on board: NSPasteboard = .general, report: (String) -> Void = { _ in }) -> ClipboardLease? {
+    static func place(_ text: String, on board: NSPasteboard = .general, report: (String) -> Void = { _ in },
+                      readItems: (NSPasteboard) -> [NSPasteboardItem]? = { $0.pasteboardItems }) -> ClipboardLease? {
         func rejected(_ reason: String) -> ClipboardLease? { report("Clipboard: " + reason); return nil }
         guard active == nil else { return rejected("another paste is still pending") }
         let original = board.changeCount
+        // nil means a read error, not an empty clipboard (including denied
+        // programmatic clipboard access on newer macOS versions).
+        guard let items = readItems(board) else { return rejected("clipboard access denied or unavailable") }
         var backup = [NSPasteboardItem]()
         var bytes = 0
-        for item in board.pasteboardItems ?? [] {
+        for item in items {
             let copy = NSPasteboardItem()
             for type in item.types {
                 guard let data = item.data(forType: type) else { return rejected("cannot preserve format \(type.rawValue)") }

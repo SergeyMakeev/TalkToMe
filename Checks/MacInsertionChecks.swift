@@ -100,6 +100,15 @@ import Cocoa
     do {
         let board = NSPasteboard.withUniqueName()
         defer { board.releaseGlobally() }
+        board.setString("Keep this clipboard", forType: .string)
+        let generation = board.changeCount
+        let denied = ClipboardLease.place("Do not write", on: board, readItems: { _ in nil })
+        try require(denied == nil && board.changeCount == generation && board.string(forType: .string) == "Keep this clipboard",
+                    "denied clipboard reads must never be treated as empty")
+    }
+    do {
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
         let first = NSPasteboardItem(), second = NSPasteboardItem()
         let rich = NSPasteboard.PasteboardType("public.rtf")
         let richData = Data(#"{\rtf1\ansi Original clipboard}"#.utf8)
