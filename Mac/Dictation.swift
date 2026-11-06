@@ -262,6 +262,7 @@ import AVFoundation
             RunLoop.main.perform(inModes: [.common, .modalPanel]) {
                 MainActor.assumeIsolated { completion() }
             }
+            CFRunLoopWakeUp(CFRunLoopGetMain())
         }
     }
 }
