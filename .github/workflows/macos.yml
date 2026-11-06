@@ -18,6 +18,15 @@ on:
         required: false
         type: boolean
         default: false
+      apple_silicon_only:
+        description: Build only Apple silicon on macOS 26 when macOS 15 runners are busy
+        required: false
+        type: boolean
+        default: false
+      source_ref:
+        description: Optional source commit for a replacement runner build
+        required: false
+        type: string
   workflow_call:
     inputs:
       version:
@@ -68,13 +77,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-15, macos-15-intel]
+        runner: ${{ fromJSON(inputs.apple_silicon_only && '["macos-26"]' || '["macos-15", "macos-15-intel"]') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     env:
       NOTARIZE: ${{ inputs.version != '' && vars.MACOS_NOTARIZE_RELEASES == 'true' }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
