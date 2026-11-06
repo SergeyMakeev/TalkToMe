@@ -40,7 +40,7 @@ internal static class Program
         if (args.Length is >= 3 and <= 5 && args[0] == "--local-models")
         {
             // Exercise first install, cached install and inference without a microphone or user settings.
-            try { CheckLocalModels(args[1], args[2], args.Length >= 4 ? args[3] : "qwen08", args.Length == 5 ? args[4] : "base").GetAwaiter().GetResult(); return 0; }
+            try { CheckLocalModels(args[1], args[2], args.Length >= 4 ? args[3] : "qwen2", args.Length == 5 ? args[4] : "base").GetAwaiter().GetResult(); return 0; }
             catch (Exception error) { Console.Error.WriteLine(error); return 1; }
         }
         if (args is ["--gpu-check", var modelDirectory, var audioSample])
@@ -204,11 +204,11 @@ internal static class Program
         var metrics = new ProcessingMetrics(settings, pcm.Length / 32000d, "en");
         string text = await recognizer.RunAsync(pcm.ToArray(), "en", token, metrics).ConfigureAwait(false);
         Console.WriteLine(text);
-        Assert(text.Contains("country", StringComparison.OrdinalIgnoreCase), "bundled Whisper JFK sample");
+        Assert(text.Contains("country", StringComparison.OrdinalIgnoreCase), "bundled speech JFK sample");
         using var translator = new EnglishEditor(settings);
         string result = await translator.EditAsync("У меня два кота.", token, metrics).ConfigureAwait(false);
         Console.WriteLine(result);
-        Assert(result.Contains("cat", StringComparison.OrdinalIgnoreCase), "bundled Qwen Russian to English");
+        Assert(result.Contains("cat", StringComparison.OrdinalIgnoreCase), "bundled Russian to English translation");
         metrics.Finish("model check");
         Console.WriteLine(metrics.Json());
         if (Environment.GetEnvironmentVariable("TALKTOME_EXPECT_BACKEND") is { Length: > 0 } expected)

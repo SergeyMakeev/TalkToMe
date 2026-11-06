@@ -104,13 +104,19 @@ struct PreferencesView: View {
                 Picker("Listen with", selection: $p.whisper) {
                     Text("Whisper Base · smaller and faster · 61 MB").tag(small.path)
                     Text("Whisper Large v3 Turbo · 575 MB").tag(large.path)
-                    if p.whisper != small.path && p.whisper != large.path { Text("Custom speech model").tag(p.whisper) }
+                    if let parakeet = ModelDownload.catalog["parakeet"] { Text("Parakeet TDT v3 · 714 MB").tag(parakeet.path) }
+                    if p.whisper != small.path && p.whisper != large.path && !p.parakeet { Text("Custom speech model").tag(p.whisper) }
                 }
             }
             Picker("Translate and edit with", selection: $p.translation) {
                 ForEach(Translation.allCases, id: \.self) { Text($0.label).tag($0) }
             }
             Text("For accuracy, try Whisper Large v3 Turbo and Qwen 2B or 4B. Qwen 0.8B can miss words and instructions.").font(.caption).foregroundStyle(.secondary)
+            if p.translation == .translategemma {
+                Text("Russian → English translation. English stays unchanged. Editing instructions and glossary are not applied.").font(.caption).foregroundStyle(.secondary)
+                Link("TranslateGemma license (Gemma terms)", destination: URL(string: "https://ai.google.dev/gemma/terms")!)
+            }
+            if p.parakeet { Link("Parakeet by NVIDIA · CC BY 4.0", destination: URL(string: "https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3")!) }
             if downloadMB > 0 { Text("Download \(downloadMB) MB once to use these models offline.") }
             else if let assets = try? p.requiredModels(), !assets.isEmpty {
                 Text("Selected models are ready for offline use.")

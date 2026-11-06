@@ -1,0 +1,21 @@
+Optional model downloads
+========================
+
+Parakeet TDT 0.6B v3 by NVIDIA
+Model: https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3
+License: Creative Commons Attribution 4.0 International
+https://creativecommons.org/licenses/by/4.0/
+TalkToMe downloads NVIDIA's Q8_0 GGUF unchanged. TalkToMe does not train or modify it.
+Native runtime: https://github.com/NVIDIA/NeMo-Speech.cpp (Apache-2.0).
+Its license, notice, and third-party notices accompany the bundled runtime.
+
+TranslateGemma 4B by Google
+Original model: https://huggingface.co/google/translategemma-4b-it
+Q4_K_M quantization by mradermacher:
+https://huggingface.co/mradermacher/translategemma-4b-it-GGUF
+TalkToMe downloads this quantization unchanged. It uses a Russian-to-English
+rendering of Google's text translation prompt, with standard Gemma turn tokens.
+Gemma Terms of Use: https://ai.google.dev/gemma/terms
+Gemma Prohibited Use Policy: https://ai.google.dev/gemma/prohibited_use_policy
+
+The model weights are optional downloads, separate from TalkToMe's own license.

@@ -19,7 +19,8 @@ internal sealed class BundledSpeech : IDisposable
         token.ThrowIfCancellationRequested();
         var speech = ModelDownload.Get(settings.SpeechModel);
         var vad = ModelDownload.Get("activity");
-        if (!speech.Installed(settings.ModelDirectory) || !vad.Installed(settings.ModelDirectory))
+        string host = settings.SpeechModel == "parakeet" ? "TalkToMeParakeetHost.exe" : "TalkToMeSpeechHost.exe";
+        if (!speech.Installed(settings.ModelDirectory) || (settings.SpeechModel != "parakeet" && !vad.Installed(settings.ModelDirectory)))
             throw new IOException("Open Settings → Models to download the speech models.");
         try
         {
@@ -33,7 +34,7 @@ internal sealed class BundledSpeech : IDisposable
                         device ??= await NativeEngines.GpuAsync(settings.UseGpu, token);
                         runningGpu = !cpuFallback && device.Id != null;
                         if (!runningGpu && !cpuFallback) fallbackReason = device.Reason;
-                        string executable = runningGpu ? NativeEngines.CudaPath("TalkToMeSpeechHost.exe") : NativeEngines.PathFor("TalkToMeSpeechHost.exe");
+                        string executable = runningGpu ? NativeEngines.CudaPath(host) : NativeEngines.PathFor(host);
                         if (!File.Exists(executable)) throw new IOException("The speech engine is missing. Extract the complete TalkToMe download and reopen the app.");
                         var info = NativeEngines.ProcessInfo(executable);
                         info.ArgumentList.Add("--worker");
@@ -48,7 +49,7 @@ internal sealed class BundledSpeech : IDisposable
                         catch (OperationCanceledException) when (!token.IsCancellationRequested) { throw new IOException("Speech engine startup timed out."); }
                         if (!ready.GetProperty("ready").GetBoolean() || (runningGpu && ready.GetProperty("backend").GetString() != "CUDA"))
                             throw new IOException("The speech engine did not initialize its selected backend.");
-                        Backend = runningGpu ? $"CUDA · {ready.GetProperty("device").GetString()}" : NativeEngines.Description("TalkToMeSpeechHost.exe");
+                        Backend = runningGpu ? $"CUDA · {device.Name}" : NativeEngines.Description(host);
                     }
                     if (worker.HasExited) throw new IOException("The speech engine stopped.");
                     if (pcm == null || IsSilent(pcm)) return "";
@@ -60,7 +61,7 @@ internal sealed class BundledSpeech : IDisposable
                         await SendAsync(new { pcm, language, glossary = string.Join(", ", settings.Glossary),
                             vad = vad.PathIn(settings.ModelDirectory), threads = Math.Clamp(Environment.ProcessorCount / 2, 1, 8) }, inferenceDeadline.Token);
                         var reply = await ReplyAsync(inferenceDeadline.Token);
-                        return reply.GetProperty("text").GetString()?.Trim() ?? throw new IOException("Whisper returned no result.");
+                        return reply.GetProperty("text").GetString()?.Trim() ?? throw new IOException("The speech engine returned no result.");
                     }
                     catch (OperationCanceledException) when (!token.IsCancellationRequested) { throw new IOException("Speech inference timed out."); }
                 }

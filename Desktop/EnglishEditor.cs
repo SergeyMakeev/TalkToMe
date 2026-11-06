@@ -45,6 +45,7 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
 
     internal static Dictionary<string, object> RequestBody(string transcript, Settings settings, string model)
     {
+        if (settings.Translation == "translategemma") return TranslateGemma.Request(transcript, model);
         bool defaults = string.IsNullOrWhiteSpace(settings.Prompt);
         string instruction = defaults ? Instruction : settings.Prompt;
         if (settings.LocalTranslation) instruction += "\n" + LocalEditing.GetProperty(defaults ? "instruction" : "custom_instruction").GetString();
@@ -76,6 +77,7 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
     {
         if (string.IsNullOrWhiteSpace(transcript)) return "";
         if (config.Translation == "transcript") return transcript;
+        if (config.Translation == "translategemma" && !TranslateGemma.NeedsTranslation(transcript)) return transcript;
         try
         {
             try { return await RequestAsync(transcript, token, metrics); }
@@ -95,6 +97,20 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
 
     private async Task<string> RequestAsync(string transcript, CancellationToken token, ProcessingMetrics? metrics)
     {
+        if (config.Translation != "translategemma") return await RequestChunkAsync(transcript, token, metrics);
+        var result = new System.Text.StringBuilder();
+        foreach (var chunk in TranslateGemma.Chunks(transcript))
+        {
+            token.ThrowIfCancellationRequested();
+            result.Append(TranslateGemma.NeedsTranslation(chunk.Text)
+                ? await RequestChunkAsync(chunk.Text, token, metrics) : chunk.Text);
+            result.Append(chunk.Separator);
+        }
+        return result.ToString().Trim();
+    }
+
+    private async Task<string> RequestChunkAsync(string transcript, CancellationToken token, ProcessingMetrics? metrics)
+    {
         using (metrics?.Measure("translation_ready")) await PrepareAsync(token);
         using var inference = metrics?.Measure("translation_request");
         using var gpuDeadline = CancellationTokenSource.CreateLinkedTokenSource(token);
@@ -109,7 +125,10 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
             throw new HttpRequestException($"llama-server returned HTTP {(int)response.StatusCode}. Check serverUrl, model, API key and context size.", null, response.StatusCode);
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
         metrics?.ReadTranslationDetails(json.RootElement);
-        return CompleteText(json.RootElement, config.LocalTranslation, transcript);
+        string text = CompleteText(json.RootElement, config.LocalTranslation && config.Translation != "translategemma", transcript);
+        if (config.Translation == "translategemma" && text.Length > Math.Max(256L, transcript.Length * 4L))
+            throw new InvalidDataException("TranslateGemma expanded the dictation unexpectedly. Retry or copy the transcript.");
+        return text;
     }
 
     internal static string CompleteText(JsonElement response, bool structured = false, string? transcript = null)

@@ -39,25 +39,33 @@ internal sealed class SettingsDialog : Form
 
         Page("Models");
         var speech = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
-        speech.Items.AddRange(["Whisper Base · smaller and faster · 61 MB", "Whisper Large v3 Turbo · 575 MB", "Custom Python / faster-whisper"]);
-        speech.SelectedIndex = !settings.BundledSpeech ? 2 : settings.SpeechModel == "base" ? 0 : 1;
+        speech.Items.AddRange(["Whisper Base · smaller and faster · 61 MB", "Whisper Large v3 Turbo · 575 MB", "Parakeet TDT v3 · 714 MB", "Custom Python / faster-whisper"]);
+        speech.SelectedIndex = !settings.BundledSpeech ? 3 : settings.SpeechModel == "base" ? 0 : settings.SpeechModel == "parakeet" ? 2 : 1;
         Row("Listen with", speech);
         var translation = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
-        string[] ids = ["qwen08", "qwen2", "qwen4", "transcript", "server"];
+        string[] ids = ["qwen08", "qwen2", "qwen4", "translategemma", "transcript", "server"];
         translation.Items.AddRange(["Local Qwen 3.5 · 0.8B · smallest · 563 MB", "Local Qwen 3.5 · 2B · 1.28 GB", "Local Qwen 3 · 4B Instruct · 2.50 GB",
-            "Transcript only · keep the spoken language", "Use my own server"]);
+            "TranslateGemma 4B · translation only · 2.49 GB", "Transcript only · keep the spoken language", "Use my own server"]);
         translation.SelectedIndex = Array.IndexOf(ids, settings.Translation);
         Row("Translate and edit with", translation);
         Row("", new Label { AutoSize = true, MaximumSize = new(420, 0), Text = "For accuracy, try Whisper Large v3 Turbo and Qwen 2B or 4B. Qwen 0.8B can miss words and instructions." });
         void SetModels(Settings s) {
-            s.BundledSpeech = speech.SelectedIndex != 2;
-            if (s.BundledSpeech) s.SpeechModel = speech.SelectedIndex == 0 ? "base" : "speech";
+            s.BundledSpeech = speech.SelectedIndex != 3;
+            if (s.BundledSpeech) s.SpeechModel = speech.SelectedIndex == 0 ? "base" : speech.SelectedIndex == 2 ? "parakeet" : "speech";
             s.Translation = ids[translation.SelectedIndex];
         }
         collect.Add(SetModels);
         Check("Use NVIDIA GPU when available (automatic CPU fallback)", settings.UseGpu, (s,v) => s.UseGpu = v);
         var summary = new Label { AutoSize = true, MaximumSize = new(420, 0) };
         Row("", summary);
+        var modelNotice = new Label { AutoSize = true, MaximumSize = new(420, 0), Text = "TranslateGemma: Russian → English only. English stays unchanged. Editing instructions and glossary are not applied." };
+        Row("", modelNotice);
+        var modelLicense = new LinkLabel { AutoSize = true, Text = "TranslateGemma license (Gemma terms)" };
+        modelLicense.LinkClicked += (_, _) => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://ai.google.dev/gemma/terms") { UseShellExecute = true });
+        Row("", modelLicense);
+        var parakeetLicense = new LinkLabel { AutoSize = true, Text = "Parakeet by NVIDIA · CC BY 4.0" };
+        parakeetLicense.LinkClicked += (_, _) => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3") { UseShellExecute = true });
+        Row("", parakeetLicense);
         var verify = new Button { Text = "Verify downloaded models", AutoSize = true };
         Row("", verify);
         verify.Click += async (_, _) => await SaveAsync(verifyOnly: true);
@@ -146,10 +154,12 @@ internal sealed class SettingsDialog : Form
                 if (visible && !tabs.TabPages.Contains(page)) tabs.TabPages.Insert(tabs.TabPages.Count - 1, page);
                 if (!visible) tabs.TabPages.Remove(page);
             }
-            ShowPage(speechPage, speech.SelectedIndex == 2);
+            ShowPage(speechPage, speech.SelectedIndex == 3);
             ShowPage(serverPage, ids[translation.SelectedIndex] == "server");
             var selection = settings.Draft();
             SetModels(selection);
+            modelNotice.Visible = modelLicense.Visible = selection.Translation == "translategemma";
+            parakeetLicense.Visible = selection.BundledSpeech && selection.SpeechModel == "parakeet";
             var models = selection.RequiredModels().Select(ModelDownload.Get).ToArray();
             long bytes = models.Where(m => !m.Installed(settings.ModelDirectory)).Sum(m => m.Size);
             summary.Text = bytes > 0 ? $"Download {Math.Ceiling(bytes / 1e6):N0} MB once to use these models offline." :

@@ -23,7 +23,9 @@ if draft=$(gh release view "$TAG" --json isDraft --jq .isDraft); then
         exit 1
     fi
 else
-    gh release create "$TAG" --verify-tag --target "$commit" --draft --generate-notes --title "TalkToMe $TAG"
+    notes=(--generate-notes)
+    if [[ -f ".github/releases/$TAG.md" ]]; then notes=(--notes-file ".github/releases/$TAG.md"); fi
+    gh release create "$TAG" --verify-tag --target "$commit" --draft "${notes[@]}" --title "TalkToMe $TAG"
 fi
 
 # An interrupted upload leaves a draft. A retry replaces its three assets before publishing.

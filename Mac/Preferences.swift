@@ -9,13 +9,14 @@ struct Failure: LocalizedError {
 }
 
 enum Translation: String, Codable, CaseIterable {
-    case qwen08, qwen2, qwen4, transcript, server
-    var bundled: Bool { self == .qwen08 || self == .qwen2 || self == .qwen4 }
+    case qwen08, qwen2, qwen4, translategemma, transcript, server
+    var bundled: Bool { self == .qwen08 || self == .qwen2 || self == .qwen4 || self == .translategemma }
     var label: String {
         switch self {
         case .qwen08: return "Local Qwen 3.5 · 0.8B · smallest · 563 MB"
         case .qwen2: return "Local Qwen 3.5 · 2B · 1.28 GB"
         case .qwen4: return "Local Qwen 3 · 4B Instruct · 2.50 GB"
+        case .translategemma: return "TranslateGemma 4B · translation only · 2.49 GB"
         case .transcript: return "Transcript only · keep the spoken language"
         case .server: return "Use my own server"
         }
@@ -42,6 +43,7 @@ struct Preferences: Codable, Equatable {
     var timeout = 60
     var prompt = ""
     var whisper = ModelDownload.catalog["base"]?.path ?? ""
+    var parakeet: Bool { whisper == ModelDownload.catalog["parakeet"]?.path }
     var vad = ModelDownload.catalog["activity"]?.path ?? ""
     #if arch(arm64)
     // Virtual Macs can advertise a Metal device that cannot run the inference kernels correctly.
@@ -90,11 +92,11 @@ struct Preferences: Codable, Equatable {
     func requiredModels() throws -> [ModelDownload] {
         let activity = try ModelDownload.get("activity")
         var assets = [ModelDownload]()
-        for id in ["base", "speech"] {
+        for id in ["base", "speech", "parakeet"] {
             let model = try ModelDownload.get(id)
             if whisper == model.path { assets.append(model) }
         }
-        if vad == activity.path { assets.append(activity) }
+        if !parakeet && vad == activity.path { assets.append(activity) }
         if translation.bundled { assets.append(try ModelDownload.get(translation.rawValue)) }
         return assets
     }
@@ -178,6 +180,7 @@ private final class DownloadProgress: NSObject, URLSessionDownloadDelegate {
     func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64,
                     totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
         let percent = totalBytesWritten * 100 / size
+        if totalBytesWritten > size { downloadTask.cancel(); return }
         if percent != (totalBytesWritten - bytesWritten) * 100 / size { report(Int(min(100, percent))) }
     }
 }
@@ -220,7 +223,24 @@ struct ModelDownload: Decodable {
         }
         if FileManager.default.fileExists(atPath: destination.path), try verified(destination) { return destination.path }
         let source = URL(string: "https://huggingface.co/\(repository)/resolve/\(revision)/\(name)")!
-        let (temp, response) = try await URLSession.shared.download(from: source, delegate: DownloadProgress(size: size, report: progress))
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 300
+        config.timeoutIntervalForResource = 7200
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        var downloaded: (URL, URLResponse)?
+        for attempt in 0..<3 {
+            do {
+                let result = try await session.download(from: source, delegate: DownloadProgress(size: size, report: progress))
+                if let http = result.1 as? HTTPURLResponse, [408, 429, 500, 502, 503, 504].contains(http.statusCode), attempt < 2 {
+                    try? FileManager.default.removeItem(at: result.0)
+                } else { downloaded = result; break }
+            } catch let error as URLError where [.timedOut, .networkConnectionLost, .cannotConnectToHost, .notConnectedToInternet].contains(error.code) && attempt < 2 {
+                try Task.checkCancellation()
+            }
+            try await Task.sleep(nanoseconds: UInt64(attempt + 1) * 2_000_000_000)
+        }
+        guard let (temp, response) = downloaded else { throw Failure("Model download failed. Check your connection and retry.") }
         defer { try? FileManager.default.removeItem(at: temp) }
         guard (response as? HTTPURLResponse)?.statusCode == 200, try verified(temp) else {
             throw Failure("Model download failed verification. Try again.")

@@ -2,7 +2,22 @@ import Foundation
 
 final class SpeechJob {
     let pointer = ttm_new_job()!
-    func cancel() { ttm_cancel(pointer) }
+    private let lock = NSLock()
+    private var cancelled = false
+    private var cancellation: (() -> Void)?
+    func cancel() {
+        lock.lock(); defer { lock.unlock() }
+        cancelled = true; ttm_cancel(pointer); cancellation?()
+    }
+    func onCancel(_ action: (() -> Void)?) {
+        lock.lock(); defer { lock.unlock() }
+        cancellation = action
+        if cancelled { action?() }
+    }
+    func checkCancellation() throws {
+        lock.lock(); defer { lock.unlock() }
+        if cancelled { throw CancellationError() }
+    }
     deinit { ttm_free_job(pointer) }
 }
 
@@ -12,6 +27,7 @@ final class SpeechEngine {
     private var path = ""
     private var metal = false
     private var closed = false
+    private let parakeet = ParakeetWorker()
     deinit { if let model { ttm_close(model) } }
 
     // NSApplication.terminate calls exit(), which does not release Swift owners.
@@ -19,6 +35,7 @@ final class SpeechEngine {
     func close(completion: @escaping @Sendable () -> Void) {
         queue.async {
             self.closed = true
+            self.parakeet.stop()
             if let model = self.model { ttm_close(model); self.model = nil }
             self.path = ""
             completion()
@@ -35,7 +52,14 @@ final class SpeechEngine {
     // Called on the model queue, or from the standalone transcription check.
     func transcribe(_ pcm: [Float], _ p: Preferences, _ job: SpeechJob) throws -> String {
         guard !closed else { throw CancellationError() }
+        try job.checkCancellation()
         guard pcm.count >= 1600, pcm.contains(where: { abs($0) > 0.0001 }) else { return "" }
+        if p.parakeet {
+            guard FileManager.default.isReadableFile(atPath: p.whisper) else { throw Failure("Open Settings → Models to download Parakeet.") }
+            if let model { ttm_close(model); self.model = nil }
+            return try parakeet.transcribe(pcm, p, job)
+        }
+        parakeet.stop()
         guard FileManager.default.isReadableFile(atPath: p.whisper),
               p.vad.isEmpty || FileManager.default.isReadableFile(atPath: p.vad) else {
             throw Failure("Open Settings → Models to download speech models, or choose your files in Speech.")
@@ -81,6 +105,7 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         }
     }
     nonisolated static func requestBody(_ transcript: String, _ p: Preferences) throws -> [String: Any] {
+        if p.translation == .translategemma { return try TranslateGemma.request(transcript, model: p.model) }
         let defaults = p.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         var instruction = try defaults ? defaultPrompt : p.prompt
         var format: [String: Any] = [:]
@@ -128,6 +153,7 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
             arguments += ["--offline", "--no-webui"]
             if !p.useMetal { arguments += ["--device", "none"] }
         }
+        if p.translation == .translategemma { arguments += ["--no-jinja", "--chat-template", "gemma"] }
         process.arguments = arguments
         var env = ProcessInfo.processInfo.environment
         if !key.isEmpty { env["LLAMA_API_KEY"] = key }
@@ -176,6 +202,17 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         throw Failure("Local llama-server is still loading. Retry when it is ready.")
     }
     func edit(_ transcript: String, _ preferences: Preferences) async throws -> String {
+        if preferences.translation != .translategemma { return try await editChunk(transcript, preferences) }
+        if !TranslateGemma.needsTranslation(transcript) { return transcript }
+        var result = ""
+        for chunk in try TranslateGemma.chunks(transcript) {
+            try Task.checkCancellation()
+            result += TranslateGemma.needsTranslation(chunk.text) ? try await editChunk(chunk.text, preferences) : chunk.text
+            result += chunk.separator
+        }
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    private func editChunk(_ transcript: String, _ preferences: Preferences) async throws -> String {
         var p = preferences
         if p.translation == .transcript { return transcript }
         if p.translation.bundled {
@@ -204,7 +241,11 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw Failure("llama-server returned HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0). Check the server URL, model and API key.")
         }
-        return try Self.completeText(data, structured: p.translation.bundled, transcript: transcript)
+        let text = try Self.completeText(data, structured: p.translation.bundled && p.translation != .translategemma, transcript: transcript)
+        if p.translation == .translategemma && text.utf16.count > max(256, transcript.utf16.count * 4) {
+            throw Failure("TranslateGemma expanded the dictation unexpectedly. Retry or copy the transcript.")
+        }
+        return text
     }
     nonisolated static func completeText(_ data: Data, structured: Bool = false, transcript: String? = nil) throws -> String {
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]

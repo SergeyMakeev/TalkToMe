@@ -12,6 +12,7 @@
   <ItemGroup>
     <Using Include="System.IO" />
     <EmbeddedResource Include="../Shared/EnglishPrompt.txt" LogicalName="TalkToMe.EnglishPrompt.txt" />
+    <EmbeddedResource Include="../Shared/TranslateGemmaPrompt.txt" LogicalName="TalkToMe.TranslateGemmaPrompt.txt" />
     <EmbeddedResource Include="../Shared/LocalEditing.json" LogicalName="TalkToMe.LocalEditing.json" />
     <EmbeddedResource Include="../Shared/Models.json" LogicalName="TalkToMe.Models.json" />
     <Content Include="../build/engines/**/*" Exclude="../build/engines/**/TalkToMeSpeech.dll" Link="engines/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
@@ -21,6 +22,8 @@
     <InternalsVisibleTo Include="TalkToMe.Checks" />
   </ItemGroup>
   <Target Name="CheckBundledEngines" BeforeTargets="PrepareForPublish" Condition="'$(SelfContained)' == 'true'">
+    <Error Condition="!Exists('../build/engines/TalkToMeParakeetHost.exe') Or !Exists('../build/engines/avx2/TalkToMeParakeetHost.exe') Or !Exists('../build/engines/cuda/TalkToMeParakeetHost.exe') Or !Exists('../build/engines/nemo_speech_asr_c.dll') Or !Exists('../build/engines/avx2/nemo_speech_asr_c.dll') Or !Exists('../build/engines/cuda/nemo_speech_asr_c.dll')"
+           Text="Build the bundled Parakeet engines before publishing." />
     <Error Condition="!Exists('../build/engines/TalkToMeSpeechHost.exe') Or !Exists('../build/engines/llama-server.exe') Or !Exists('../build/engines/avx2/TalkToMeSpeechHost.exe') Or !Exists('../build/engines/avx2/llama-server.exe')"
            Text="Build the native CPU engines before publishing. Run py -3 Shared/build_engines.py build/engines --cuda from the repository root." />
     <Error Condition="!Exists('../build/engines/cuda/TalkToMeSpeechHost.exe') Or !Exists('../build/engines/cuda/llama-server.exe') Or !Exists('../build/engines/cuda/cudart64_13.dll') Or !Exists('../build/engines/cuda/cublas64_13.dll') Or !Exists('../build/engines/cuda/cublasLt64_13.dll') Or !Exists('../build/engines/cuda/CUDA-EULA.txt')"

@@ -166,6 +166,35 @@ if args.count == 2 && args[1] == "--check-access-reset" {
         } catch { editor.stop(); fputs("\(error.localizedDescription)\n", stderr); exit(1) }
     }
     dispatchMain()
+} else if args.count == 3 && args[1] == "--check-parakeet" {
+    Task {
+        do {
+            var p = Preferences()
+            p.whisper = try await ModelDownload.get("parakeet").install()
+            let file = try AVAudioFile(forReading: URL(fileURLWithPath: args[2]))
+            guard let pcm = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)),
+                  file.processingFormat.sampleRate == 16000, file.processingFormat.channelCount == 1 else { throw Failure("Expected 16 kHz mono WAV.") }
+            try file.read(into: pcm)
+            let samples = Array(UnsafeBufferPointer(start: pcm.floatChannelData![0], count: Int(pcm.frameLength)))
+            let engine = SpeechEngine()
+            for metal in [false, true] {
+                p.useMetal = metal
+                let text = try await engine.recognize(samples, p, SpeechJob())
+                guard text.lowercased().contains("country") else { throw Failure("Unexpected Parakeet transcript: \(text)") }
+                print("Parakeet \(metal ? "Metal or CPU fallback" : "CPU"): \(text)")
+            }
+            let job = SpeechJob()
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.02) { job.cancel() }
+            do { _ = try await engine.recognize(Array(repeating: samples, count: 20).flatMap { $0 }, p, job); throw Failure("Cancelled speech returned a result.") }
+            catch is CancellationError { print("Parakeet cancellation passed.") }
+            let resumed = try await engine.recognize(samples, p, SpeechJob())
+            guard resumed.lowercased().contains("country") else { throw Failure("Parakeet did not recover after cancellation.") }
+            await withCheckedContinuation { continuation in engine.close { continuation.resume() } }
+            print("Parakeet recovery and shutdown passed.")
+            exit(0)
+        } catch { fputs("\(error.localizedDescription)\n", stderr); exit(1) }
+    }
+    dispatchMain()
 } else if args.count == 3 && args[1] == "--check-server" {
     Task { @MainActor in
         do {

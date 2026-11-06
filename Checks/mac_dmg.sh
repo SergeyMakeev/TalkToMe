@@ -26,3 +26,4 @@ if [[ "${NOTARIZE:-false}" == true ]]; then
 fi
 "$installed/Contents/MacOS/TalkToMe" --self-test
 "$installed/Contents/MacOS/TalkToMe" --check-insertion
+"$installed/Contents/MacOS/TalkToMe" --check-parakeet build/mac/whisper.cpp/samples/jfk.wav

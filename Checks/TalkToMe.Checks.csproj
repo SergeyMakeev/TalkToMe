@@ -12,5 +12,6 @@
   <ItemGroup>
     <EmbeddedResource Include="EditingResponses.json" />
     <EmbeddedResource Include="TranslationCases.json" />
+    <EmbeddedResource Include="TranslateGemmaCases.json" />
   </ItemGroup>
 </Project>

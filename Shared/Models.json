@@ -1,4 +1,18 @@
 {
+  "parakeet": {
+    "name": "parakeet-tdt-0.6b-v3.q8_0.gguf",
+    "repository": "nvidia/parakeet-tdt-0.6b-v3",
+    "revision": "541d1f99c6b0c3cd0b11a95167540bb8edefd82b",
+    "size": 713975456,
+    "digest": "e3880d0aaaaf2c308ea2c35016b2b895c423eb3fda924c1b463d1c19b7f4d32e"
+  },
+  "translategemma": {
+    "name": "translategemma-4b-it.Q4_K_M.gguf",
+    "repository": "mradermacher/translategemma-4b-it-GGUF",
+    "revision": "d37868f759d2f817a43d28dd80cf9f982ffa62fd",
+    "size": 2489909760,
+    "digest": "81200d03e843d2ec1ece6eeafe7d13cb6e5211e1fcd336ade55790b683a08330"
+  },
   "base": {
     "name": "ggml-base-q5_1.bin",
     "repository": "ggerganov/whisper.cpp",

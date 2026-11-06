@@ -23,7 +23,7 @@ func checkEditingResponses() throws {
           try EnglishEditor.completeText(data, structured: true, transcript: long) == long.trimmingCharacters(in: .whitespacesAndNewlines) else {
         throw Failure("Unexpected expansion check failed.")
     }
-    for model in Translation.allCases where model.bundled {
+    for model in Translation.allCases where model.bundled && model != .translategemma {
         var p = Preferences(); p.translation = model
         let request = try EnglishEditor.requestBody("Проверка", p)
         let asset = try ModelDownload.get(model.rawValue)
@@ -38,10 +38,20 @@ func checkEditingResponses() throws {
         }
     }
     print("Structured editing response and request checks passed.")
+    var p = Preferences(); p.translation = .translategemma
+    let request = try EnglishEditor.requestBody("Привет", p)
+    guard request["response_format"] == nil, (request["messages"] as? [[String: String]])?.count == 1 else {
+        throw Failure("TranslateGemma must use its dedicated translation format.")
+    }
+    let input = String(repeating: "Привет, мир! 🙂\n", count: 300)
+    let chunks = try TranslateGemma.chunks(input)
+    guard chunks.count > 1, chunks.allSatisfy({ $0.text.utf8.count <= 1500 }), chunks.map({ $0.text + $0.separator }).joined() == input else {
+        throw Failure("Translation chunking lost Unicode text.")
+    }
 }
 
 @MainActor func checkTranslationCases(_ editor: EnglishEditor, _ preferences: Preferences) async throws {
-    for item in try editingFixture("TranslationCases") {
+    for item in try editingFixture(preferences.translation == .translategemma ? "TranslateGemmaCases" : "TranslationCases") {
         var p = preferences; p.glossary = item["glossary"] as! [String]
         let text = try await editor.edit(item["transcript"] as! String, p)
         let lower = text.lowercased()

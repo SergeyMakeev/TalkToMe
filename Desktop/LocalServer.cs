@@ -128,6 +128,8 @@ internal sealed class LocalServer(Settings settings) : IDisposable
                     "--reasoning", "off", "--no-mmproj" }) info.ArgumentList.Add(arg);
                 if (settings.LocalTranslation)
                     foreach (var arg in new[] { "--offline", "--no-webui", "--device", RunningGpu ? gpuDevice!.Id! : "none", "--fit", "off" }) info.ArgumentList.Add(arg);
+                if (settings.Translation == "translategemma")
+                    foreach (var arg in new[] { "--no-jinja", "--chat-template", "gemma" }) info.ArgumentList.Add(arg);
                 if (!RunningGpu) info.ArgumentList.Add("--log-disable");
             else foreach (var arg in new[] { "--log-verbosity", "4", "--log-colors", "off" }) info.ArgumentList.Add(arg);
                 if (Key is { Length: > 0 } key)

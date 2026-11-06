@@ -52,6 +52,17 @@ internal static class EditingCheck
                 "external server compatibility");
         }
         Console.WriteLine("Structured editing response and request checks passed.");
+        var gemma = Settings.Defaults(Environment.CurrentDirectory);
+        gemma.Translation = "translategemma"; gemma.SpeechModel = "parakeet"; gemma.Validate();
+        Assert(gemma.RequiredModels().SequenceEqual(new[] { "parakeet", "translategemma" }), "Parakeet needs no Whisper VAD");
+        var gemmaRequest = JsonSerializer.SerializeToElement(EnglishEditor.RequestBody("Привет", gemma, "test"));
+        Assert(!gemmaRequest.TryGetProperty("response_format", out _) && gemmaRequest.GetProperty("messages").GetArrayLength() == 1, "dedicated translation format");
+        string longInput = string.Concat(Enumerable.Repeat("Привет, мир! 🙂\n", 300));
+        var chunks = TranslateGemma.Chunks(longInput).ToArray();
+        Assert(chunks.Length > 1 && chunks.All(c => System.Text.Encoding.UTF8.GetByteCount(c.Text) <= 1500) &&
+            string.Concat(chunks.Select(c => c.Text + c.Separator)) == longInput, "lossless Unicode translation chunks");
+        using var gemmaEditor = new EnglishEditor(gemma);
+        Assert(gemmaEditor.EditAsync("Keep this English text.", default).GetAwaiter().GetResult() == "Keep this English text.", "English needs no translator download");
     }
     internal static async Task RunModels(string directory, string model, bool gpu = true)
     {
@@ -62,7 +73,7 @@ internal static class EditingCheck
         if (!settings.LocalTranslation) throw new ArgumentException("Choose a bundled translator.");
         await ModelDownload.Get(model).InstallAsync(settings.ModelDirectory, new Progress<string>(), default);
         using var editor = new EnglishEditor(settings);
-        foreach (var item in Cases("TranslationCases").EnumerateArray())
+        foreach (var item in Cases(model == "translategemma" ? "TranslateGemmaCases" : "TranslationCases").EnumerateArray())
         {
             settings.Glossary = item.GetProperty("glossary").EnumerateArray().Select(x => x.GetString()!).ToArray();
             string text = await editor.EditAsync(item.GetProperty("transcript").GetString()!, default);
