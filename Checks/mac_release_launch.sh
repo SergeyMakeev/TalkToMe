@@ -73,7 +73,6 @@ for i in {1..45}; do
         cat "$out/stdout.txt" "$out/stderr.txt"
         grep -Fq 'Result window, Settings sheet and menu-bar icon appeared.' "$out/stdout.txt"
         echo 'Installed release opened through Launch Services.'
-        bash Checks/mac_quit.sh "$installed" "$out/quit"
         exit 0
     fi
     sleep 1

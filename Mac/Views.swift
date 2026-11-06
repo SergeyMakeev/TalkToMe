@@ -11,9 +11,9 @@ struct Panel: View {
                 Button("Settings…") { app.configure() }.disabled(app.phase != .idle)
             }
             Text(app.status).foregroundStyle(.secondary).textSelection(.enabled)
-            if !app.prefs.review && !app.accessibilityGranted {
+            if !app.prefs.review && !app.accessibility.trusted {
                 HStack {
-                    Text("Allow Accessibility access to type into other apps.")
+                    Text("macOS has not confirmed access for this running copy.")
                     Spacer()
                     Button("Enable insertion…") { app.openAccessibility() }
                 }
@@ -114,7 +114,7 @@ struct PreferencesView: View {
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("TalkToMe Settings").font(.title2.bold())
+            Text("TalkToMe Settings · \(AccessibilityAccess.version)").font(.title2.bold())
             TabView {
                 models.tabItem { Text("Models") }
                 Form {
@@ -150,10 +150,18 @@ struct PreferencesView: View {
                         }
                         Button("Accessibility access…") { app.openAccessibility() }
                     }
-                    Text(app.accessibilityGranted ? "Accessibility access is enabled." : "Accessibility access is missing. Enable TalkToMe to insert text into other apps.")
-                        .foregroundStyle(.secondary)
-                    if !app.accessibilityGranted {
-                        Text("If TalkToMe is already enabled there, remove and add the installed app again, then restart it.").foregroundStyle(.secondary)
+                    Text(app.accessibility.message).foregroundStyle(.secondary)
+                    if !app.accessibility.trusted || !app.accessibility.canPostEvents {
+                        Text("If the switch is already on, remove TalkToMe with the minus button, add this copy again, and quit and reopen it. Preview updates can invalidate an earlier approval.").foregroundStyle(.secondary)
+                    }
+                    HStack {
+                        Button("Recheck access") { app.refreshPermissions() }
+                        Button("Show this app") { NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL]) }
+                        Button("Copy access diagnostics") {
+                            app.refreshPermissions()
+                            app.copy(app.accessibility.diagnostics)
+                            feedback = "Copied app identity and permission status."
+                        }
                     }
                 }.tabItem { Text("Dictation") }
                 Form {

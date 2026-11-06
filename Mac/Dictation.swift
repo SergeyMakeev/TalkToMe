@@ -9,10 +9,10 @@ import AVFoundation
     @Published private(set) var source = ""
     @Published var english = ""
     @Published var settingsOpen = false
-    @Published private(set) var accessibilityGranted = AXIsProcessTrusted()
+    @Published private(set) var accessibility = AccessibilityAccess.current()
     var refreshMenu: (() -> Void)?
     private let keys = Hotkeys()
-    private var speech = SpeechEngine()
+    private let speech = SpeechEngine()
     private let editor = EnglishEditor()
     private var mic: Capture?
     private var target: Destination?
@@ -25,6 +25,7 @@ import AVFoundation
     private var job: SpeechJob?
     private var timer: Timer?
     private var observer: NSObjectProtocol?
+    private var closing = false
     private let tones = ["start","stop"].map { name in
         Bundle.main.url(forResource: name, withExtension: "wav").flatMap { NSSound(contentsOf: $0, byReference: true) }
     }
@@ -46,6 +47,7 @@ import AVFoundation
             }
     }
     private func handleKey(_ id: UInt32, _ down: Bool) {
+        guard !closing else { return }
         if id == 2 { if down { cancel() }; return }
         guard !settingsOpen, pressed != down else { return }
         pressed = down
@@ -56,18 +58,20 @@ import AVFoundation
         }
     }
     func configure() {
-        guard phase == .idle else { return }
+        guard !closing, phase == .idle else { return }
         pressed = false
         refreshPermissions()
         settingsOpen = true
     }
-    func refreshPermissions() { accessibilityGranted = AXIsProcessTrusted() }
+    func refreshPermissions() { accessibility = AccessibilityAccess.current() }
     func openAccessibility() {
         refreshPermissions()
-        if !accessibilityGranted { _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary) }
+        if !accessibility.trusted { _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary) }
+        else if !accessibility.canPostEvents { _ = CGRequestPostEventAccess() }
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") { NSWorkspace.shared.open(url) }
     }
     func save(_ p: Preferences, key: String, remove: Bool) throws {
+        guard !closing else { throw CancellationError() }
         try p.validate()
         do {
             try keys.setRecord(p.shortcut)
@@ -88,14 +92,15 @@ import AVFoundation
             p.serverURL != prefs.serverURL || p.manageServer != prefs.manageServer || p.executable != prefs.executable ||
             p.gguf != prefs.gguf || p.model != prefs.model || p.contextSize != prefs.contextSize || p.gpuLayers != prefs.gpuLayers ||
             remove || !key.isEmpty { editor.stop() }
-        if p.whisper != prefs.whisper || p.useMetal != prefs.useMetal { speech = SpeechEngine() }
+        // SpeechEngine reloads on its serial queue. Keep one owner so shutdown
+        // also waits for work from sessions cancelled just before changing models.
         if p.whisper != prefs.whisper || p.vad != prefs.vad || p.glossary != prefs.glossary { language = "" }
         prefs = p
         status = "Settings saved."
         settingsOpen = false
     }
     private func cue(_ index: Int) {
-        if prefs.sounds, let tone = tones[index] { tone.stop(); tone.play() }
+        if !closing, prefs.sounds, let tone = tones[index] { tone.stop(); tone.play() }
     }
     private func start() {
         let capture = Capture()
@@ -152,7 +157,7 @@ import AVFoundation
         }
     }
     func retry() {
-        guard canRetry else { return }
+        guard !closing, canRetry else { return }
         do { try keys.enableCancel(prefs.cancelShortcut); process(insert: false) }
         catch { status = error.localizedDescription }
     }
@@ -182,7 +187,6 @@ import AVFoundation
                 refreshPermissions()
                 if p.review { status = "Review mode is on. Ready to review and copy." }
                 else if !insert { status = "Reprocessed. Use Copy result to insert it." }
-                else if !accessibilityGranted { status = InsertionOutcome.blocked(.accessibility).message }
                 else if let destination = target {
                     let outcome = try await destination.insert(text, valid: { self.target != nil && self.revision == id })
                     if revision == id { status = outcome.message }
@@ -205,9 +209,53 @@ import AVFoundation
         board.clearContents(); board.setString(text, forType: .string)
         status = "Copied."
     }
-    func quit() {
+    // Exercise the real app owner and Quit path without requesting microphone access.
+    func checkShutdown(_ files: [String], cancelInference: Bool) {
+        do {
+            guard files.count == 2 || files.count == 3 else { throw Failure("Expected a speech model, sample WAV and optional speech detector.") }
+            var p = Preferences()
+            p.whisper = files[0]; p.vad = files.count == 3 ? files[2] : ""; p.language = "en"; p.glossary = []
+            let file = try AVAudioFile(forReading: URL(fileURLWithPath: files[1]))
+            guard let pcm = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)),
+                  file.processingFormat.sampleRate == 16000, file.processingFormat.channelCount == 1 else { throw Failure("Expected 16 kHz mono WAV.") }
+            try file.read(into: pcm)
+            let samples = Array(UnsafeBufferPointer(start: pcm.floatChannelData![0], count: Int(pcm.frameLength)))
+            let work = SpeechJob()
+            job = work
+            phase = .processing
+            task = Task {
+                do {
+                    let text = try await speech.recognize(samples, p, work)
+                    if !cancelInference {
+                        guard text.lowercased().contains("country") else { throw Failure("Shutdown test transcription failed.") }
+                        print("Speech model loaded for normal application Quit (\(p.useMetal ? "Metal" : "CPU")).")
+                        NSApp.terminate(nil)
+                    }
+                } catch {
+                    if !closing { fputs("\(error.localizedDescription)\n", stderr); exit(1) }
+                }
+            }
+            if cancelInference {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    print("Quit requested during speech processing.")
+                    NSApp.terminate(nil)
+                }
+            }
+        } catch { fputs("\(error.localizedDescription)\n", stderr); exit(1) }
+    }
+    func quit() async {
+        guard !closing else { return }
+        closing = true
+        refreshMenu = nil
+        let pending = task
         cancel()
-        editor.stop()
-        if let observer { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
+        phase = .processing
+        status = "Closing and releasing models…"
+        keys.stop()
+        for tone in tones { tone?.stop() }
+        if let observer { NSWorkspace.shared.notificationCenter.removeObserver(observer); self.observer = nil }
+        await pending?.value
+        await speech.close()
+        await editor.close()
     }
 }

@@ -73,11 +73,13 @@ final class Hotkeys {
     }
     func enableCancel(_ description: String) throws { disableCancel(); cancel = try register(KeyChord(description), 2) }
     func disableCancel() { if let cancel { UnregisterEventHotKey(cancel); self.cancel = nil } }
-    deinit {
-        if let record { UnregisterEventHotKey(record) }
+    func stop() {
+        action = nil
+        if let record { UnregisterEventHotKey(record); self.record = nil }
         disableCancel()
-        if let handler { RemoveEventHandler(handler) }
+        if let handler { RemoveEventHandler(handler); self.handler = nil }
     }
+    deinit { stop() }
 }
 
 final class Capture: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
@@ -142,7 +144,9 @@ struct Destination {
         return AXUIElementCopyAttributeValue(el, key as CFString, &value) == .success ? value : nil
     }
     static func capture() -> Result<Self, InsertionProblem> {
-        guard AXIsProcessTrusted() else { return .failure(.accessibility) }
+        // The trust preflight can remain stale after a permission change. Let the
+        // actual AX request report access; macOS still enforces the permission.
+        let trusted = AXIsProcessTrusted()
         guard let app = NSWorkspace.shared.frontmostApplication else { return .failure(.noApplication) }
         guard app.processIdentifier != getpid() else { return .failure(.ownWindow) }
         let bundle = (app.bundleIdentifier ?? "").lowercased()
@@ -166,7 +170,9 @@ struct Destination {
                 error = .invalidUIElement
             } else if error == .success { error = .noValue }
         }
-        guard let el = focused else { return .failure(.focusUnavailable(error.rawValue)) }
+        guard let el = focused else {
+            return .failure(!trusted || error == .apiDisabled ? .accessibility : .focusUnavailable(error.rawValue))
+        }
         AXUIElementSetMessagingTimeout(el, 0.25)
         let role = attribute(el, kAXRoleAttribute) as? String ?? ""
         guard attribute(el, kAXSubroleAttribute) as? String != "AXSecureTextField" else { return .failure(.secureInput) }

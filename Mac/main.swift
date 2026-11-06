@@ -8,6 +8,8 @@ import AVFoundation
     private var window: NSWindow!
     private var item: NSStatusItem!
     private let menu = NSMenu()
+    private var termination: Task<Void, Never>?
+    private var readyToTerminate = false
     func applicationDidFinishLaunching(_ notification: Notification) {
         controller = Dictation()
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 690, height: 480),
@@ -43,9 +45,12 @@ import AVFoundation
                     exit(1)
                 }
                 print("Result window, Settings sheet and menu-bar icon appeared.")
-                self.controller.quit()
-                exit(0)
+                NSApp.terminate(nil)
             }
+        }
+        if CommandLine.arguments.contains("--check-shutdown") {
+            controller.checkShutdown(Array(CommandLine.arguments.dropFirst(2)).filter { $0 != "--cancel-inference" },
+                cancelInference: CommandLine.arguments.contains("--cancel-inference"))
         }
     }
     func icon() {
@@ -67,7 +72,22 @@ import AVFoundation
     @objc func settings() { show(); controller.configure() }
     @objc func cancel() { controller.cancel() }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool { show(); return true }
-    func applicationWillTerminate(_ notification: Notification) { controller.quit() }
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if readyToTerminate { return .terminateNow }
+        if termination == nil {
+            termination = Task { @MainActor in
+                await controller.quit()
+                readyToTerminate = true
+                sender.reply(toApplicationShouldTerminate: true)
+            }
+        }
+        return .terminateLater
+    }
+    func applicationWillTerminate(_ notification: Notification) {
+        if CommandLine.arguments.contains("--check-window") || CommandLine.arguments.contains("--check-shutdown") {
+            print("Application shutdown completed after releasing its models.")
+        }
+    }
 }
 
 let args = CommandLine.arguments
