@@ -20,7 +20,17 @@ Read the sentence above the buttons. The published **v0.1.0–v0.2.1** Mac relea
 
 If the alert says the app **is damaged**, download a fresh copy of the correct architecture from the release page. To compare the downloaded file with GitHub’s SHA-256 digest, run `shasum -a 256` followed by the path to the downloaded ZIP or DMG. If macOS says the app **will damage your computer**, leave it blocked and report the exact message and release version. [Apple’s explanation of these alerts](https://support.apple.com/en-us/102445)
 
-If the icon keeps bouncing without a window, check the same **Privacy & Security** panel for a pending TalkToMe approval. Models load when you start dictation, so waiting for a model download will not resolve a launch that has not reached the settings window. If the app still fails after approval, report the macOS version and capture a three-second startup sample while the icon is bouncing: `sample TalkToMe 3 -file /tmp/TalkToMe-startup.txt`. A sample stuck entirely at `_dyld_start` points to a problem before the app's startup code; include the output of `codesign --verify --deep --strict --verbose=2 /Applications/TalkToMe.app` to help distinguish an altered bundle from a macOS launch-assessment problem.
+If the icon keeps bouncing without a window, check the same **Privacy & Security** panel for a pending TalkToMe approval. Models load when you start dictation, so waiting for a model download will not resolve a launch that has not reached the settings window.
+
+For **v0.2.1**, a launch stall can persist even after **Open Anyway**. The following temporary workaround restored startup on an M2 Max running macOS 26.7.1. Use it only for a copy from the official release that you trust: **force-quit TalkToMe first**, then run these commands in Terminal. They check the bundle signature and remove the download-quarantine marker from **TalkToMe only** before reopening it. This is a workaround for the unnotarized release; normal distribution needs Developer ID signing and Apple notarization.
+
+```sh
+codesign --verify --deep --strict --verbose=2 /Applications/TalkToMe.app &&
+xattr -dr com.apple.quarantine /Applications/TalkToMe.app &&
+open /Applications/TalkToMe.app
+```
+
+If the app still fails, report the macOS version and capture a three-second startup sample while the icon is bouncing: `sample TalkToMe 3 -file /tmp/TalkToMe-startup.txt`. A sample stuck entirely at `_dyld_start` points to a problem before the app's startup code; include the signature-check output to help distinguish an altered bundle from a macOS launch-assessment problem.
 
 To build from source on a Mac, install Xcode command line tools, CMake 3.26+, Ninja and Python 3.10+, then run `bash Mac/build.sh`. The script builds the pinned whisper.cpp and llama.cpp runtimes into the app and writes `build/mac/TalkToMe.app` and a drag-to-install DMG.
 
