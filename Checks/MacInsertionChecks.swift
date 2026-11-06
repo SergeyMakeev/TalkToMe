@@ -102,9 +102,13 @@ import Cocoa
         defer { board.releaseGlobally() }
         let first = NSPasteboardItem(), second = NSPasteboardItem()
         let rich = NSPasteboard.PasteboardType("public.rtf")
+        let richData = Data(#"{\rtf1\ansi Original clipboard}"#.utf8)
+        let binary = NSPasteboard.PasteboardType("com.sergeymakeev.TalkToMe.test.binary")
         first.setString("Original clipboard", forType: .string)
-        first.setData(Data([1, 2, 3, 4]), forType: rich)
-        second.setData(Data([5, 6, 7]), forType: .png)
+        // AppKit advertises conversions from RTF to UTF-16. The fixture must be
+        // valid RTF or those promised formats cannot be materialized for backup.
+        first.setData(richData, forType: rich)
+        second.setData(Data([5, 6, 7]), forType: binary)
         board.writeObjects([first, second])
         guard let lease = ClipboardLease.place("Dictated text", on: board, report: { print($0) }) else { throw Failure("Could not create private pasteboard lease.") }
         try require(lease.isCurrent && board.string(forType: .string) == "Dictated text", "temporary paste text is available")
@@ -112,7 +116,7 @@ import Cocoa
         lease.restore()
         let items = board.pasteboardItems ?? []
         try require(items.count == 2 && items[0].string(forType: .string) == "Original clipboard" &&
-                    items[0].data(forType: rich) == Data([1, 2, 3, 4]) && items[1].data(forType: .png) == Data([5, 6, 7]), "all clipboard items and formats are restored")
+                    items[0].data(forType: rich) == richData && items[1].data(forType: binary) == Data([5, 6, 7]), "all clipboard items and formats are restored")
         guard let changed = ClipboardLease.place("Second dictation", on: board) else { throw Failure("Second pasteboard lease failed.") }
         board.clearContents(); board.setString("User copied this later", forType: .string)
         changed.restore()
