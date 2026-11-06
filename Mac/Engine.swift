@@ -11,12 +11,14 @@ final class SpeechEngine {
     private var model: UnsafeMutableRawPointer?
     private var path = ""
     private var metal = false
+    private var closed = false
     deinit { if let model { ttm_close(model) } }
 
     // NSApplication.terminate calls exit(), which does not release Swift owners.
     // Drain inference and free its buffers before ggml's global Metal destructor.
     func close(completion: @escaping @Sendable () -> Void) {
         queue.async {
+            self.closed = true
             if let model = self.model { ttm_close(model); self.model = nil }
             self.path = ""
             completion()
@@ -32,6 +34,7 @@ final class SpeechEngine {
     }
     // Called on the model queue, or from the standalone transcription check.
     func transcribe(_ pcm: [Float], _ p: Preferences, _ job: SpeechJob) throws -> String {
+        guard !closed else { throw CancellationError() }
         guard pcm.count >= 1600, pcm.contains(where: { abs($0) > 0.0001 }) else { return "" }
         guard FileManager.default.isReadableFile(atPath: p.whisper),
               p.vad.isEmpty || FileManager.default.isReadableFile(atPath: p.vad) else {

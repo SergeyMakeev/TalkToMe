@@ -7,8 +7,18 @@ import AVFoundation
 // Cmd+Q. Calling terminate inside a main-queue block can starve the async cleanup
 // that needs that same queue; a speech-check Task must also return before Quit.
 @MainActor func scheduleCheckQuit() {
-    let timer = Timer(timeInterval: 0.01, repeats: false) { _ in
-        MainActor.assumeIsolated { NSApp.terminate(nil) }
+    let deadline = Date().addingTimeInterval(3)
+    let timer = Timer(timeInterval: 0.05, repeats: true) { timer in
+        MainActor.assumeIsolated {
+            // AppKit ignores terminate while SwiftUI's Settings sheet is open.
+            // Let its normal dismissal finish before testing the Quit action.
+            guard NSApp.windows.allSatisfy({ $0.attachedSheet == nil }) else {
+                if Date() > deadline { fputs("Settings did not close before Quit.\n", stderr); exit(1) }
+                return
+            }
+            timer.invalidate()
+            NSApp.terminate(nil)
+        }
     }
     RunLoop.main.add(timer, forMode: .common)
 }
@@ -56,6 +66,7 @@ import AVFoundation
                 }
                 print("Result window, Settings sheet and menu-bar icon appeared.")
                 fflush(stdout)
+                self.controller.settingsOpen = false
                 scheduleCheckQuit()
             }
         }

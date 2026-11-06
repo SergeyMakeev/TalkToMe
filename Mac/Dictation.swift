@@ -211,6 +211,7 @@ import AVFoundation
     }
     // Exercise the real app owner and Quit path without requesting microphone access.
     func checkShutdown(_ files: [String], cancelInference: Bool) {
+        settingsOpen = false
         do {
             guard files.count == 2 || files.count == 3 else { throw Failure("Expected a speech model, sample WAV and optional speech detector.") }
             var p = Preferences()
