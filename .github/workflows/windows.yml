@@ -54,6 +54,8 @@ jobs:
         run: dotnet run --project Checks -c Release --no-build -- --crash-check
       - name: Verify hotkey release and microphone failure recovery
         run: dotnet run --project Checks -c Release --no-build -- --capture-check
+      - name: Verify native focus helper crash and hang isolation
+        run: dotnet run --project Checks -c Release --no-build -- --focus-check
       - name: Download the default models, transcribe and translate using the bundled engines
         run: dotnet run --project Checks -c Release --no-build -- --local-models build/model-check build/native-src/whisper.cpp/samples/jfk.wav qwen2
       - name: Verify portable CPU fallback
@@ -98,7 +100,7 @@ jobs:
           $package = 'build/windows-release'
           dotnet publish Desktop/TalkToMe.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true "-p:Version=$env:APP_VERSION" -o $package
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          foreach ($file in 'TalkToMe.exe','TalkToMe.CrashMonitor.exe') {
+          foreach ($file in 'TalkToMe.exe','TalkToMe.CrashMonitor.exe','TalkToMe.FocusHost.exe') {
             if (!(Test-Path -LiteralPath (Join-Path $package $file))) { throw "Missing release file: $file" }
           }
           if (Test-Path -LiteralPath "$package/engines") { throw 'App releases must reuse the separate runtime, not bundle engines.' }

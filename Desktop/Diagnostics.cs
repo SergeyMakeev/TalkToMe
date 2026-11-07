@@ -26,18 +26,26 @@ internal static class Diagnostics
                 Environment.FailFast("Unhandled TalkToMe UI exception. See the local Diagnostics folder.", e.Exception);
             };
             TaskScheduler.UnobservedTaskException += (_, e) => Error("unobserved task", e.Exception);
-            if (!Debugger.IsAttached) StartMonitor();
+            if (!Debugger.IsAttached) StartMonitor(Environment.ProcessId);
         }
         catch { /* Diagnostics must never prevent the app from opening. */ }
     }
-    private static void StartMonitor()
+    internal static void TrackChild(Process process)
+    {
+        if (!enabled || Debugger.IsAttached) return;
+        _ = Task.Run(() => {
+            try { if (!process.HasExited) StartMonitor(process.Id); }
+            catch (Exception error) { Error("child monitor", error); }
+        });
+    }
+    private static void StartMonitor(int processId)
     {
         string executable = Path.Combine(AppContext.BaseDirectory, "TalkToMe.CrashMonitor.exe");
         if (!File.Exists(executable)) { Event("monitor", "Crash monitor is missing."); return; }
-        string eventName = @"Local\TalkToMe.CrashReady." + Environment.ProcessId + "." + Guid.NewGuid().ToString("N");
+        string eventName = @"Local\TalkToMe.CrashReady." + processId + "." + Guid.NewGuid().ToString("N");
         using var ready = new EventWaitHandle(false, EventResetMode.ManualReset, eventName);
         var info = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true };
-        info.ArgumentList.Add(Environment.ProcessId.ToString());
+        info.ArgumentList.Add(processId.ToString());
         info.ArgumentList.Add(DirectoryPath); info.ArgumentList.Add(eventName);
         using var monitor = Process.Start(info);
         Event("monitor", ready.WaitOne(5000) ? "Crash monitor started; per-session status and exit codes are in monitor-*.txt." : "Crash monitor startup timed out.");

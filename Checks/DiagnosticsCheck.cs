@@ -17,6 +17,17 @@ internal static class DiagnosticsCheck
         string text = WindowsCrashEvents.Summarize(xml) ?? throw new Exception("App crash event omitted");
         if (!text.Contains("uiautomationcore.dll") || !text.Contains("c0000005") || text.Contains("PRIVATE")) throw new Exception("Crash event fields missing or private fields included");
         if (WindowsCrashEvents.Summarize(xml.Replace("TalkToMe.exe", "AnotherApp.exe")) != null) throw new Exception("Unrelated app event included");
+        const string runtime = """
+            <Event><System><EventID>1026</EventID></System><EventData><Data>Application: TalkToMe.exe
+            .NET Version: 8.0.33
+            Exception Info: System.AccessViolationException: PRIVATE
+            Stack:
+               at MS.Internal.Automation.UiaCoreApi.RawUiaPatternRelease(IntPtr)
+               at Example.Method() in C:\PRIVATE\source.cs:line 12
+            </Data></EventData></Event>
+            """;
+        string frames = WindowsCrashEvents.Summarize(runtime) ?? throw new Exception("Runtime crash event omitted");
+        if (!frames.Contains("RawUiaPatternRelease") || !frames.Contains("System.AccessViolationException") || frames.Contains("PRIVATE")) throw new Exception("Runtime stack missing or message/path leaked");
         Console.WriteLine("Windows crash-event filtering and privacy checks passed.");
     }
 

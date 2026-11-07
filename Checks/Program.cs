@@ -16,6 +16,12 @@ internal static class Program
         Console.OutputEncoding = new UTF8Encoding(false);
         if (args is ["--crash-child", var crashDirectory]) { DiagnosticsCheck.Child(crashDirectory); return 1; }
         if (args is ["--exit-child", var exitDirectory]) { DiagnosticsCheck.Child(exitDirectory, terminate: true); return 1; }
+        if (args is ["--focus-child", var focusMode]) { FocusProbeCheck.Child(focusMode); return 0; }
+        if (args is ["--focus-check"])
+        {
+            try { FocusProbeCheck.Run(); return 0; }
+            catch (Exception error) { Console.Error.WriteLine(error); return 1; }
+        }
         if (args is ["--crash-check"])
         {
             try { DiagnosticsCheck.Run().GetAwaiter().GetResult(); return 0; }
@@ -292,8 +298,11 @@ internal static class Program
             {
                 switch (cmd)
                 {
-                    case "first": window.Activate(); first.Clear(); first.Focus(); break;
-                    case "second": second.Clear(); second.Focus(); break;
+                    case "first": window.Activate(); first.ReadOnly = false; first.AccessibleName = "First test field"; first.Clear(); first.Focus(); break;
+                    case "second": second.UseSystemPasswordChar = false; second.Clear(); second.Focus(); break;
+                    case "readonly": first.ReadOnly = true; first.Focus(); break;
+                    case "password": second.UseSystemPasswordChar = true; second.Focus(); break;
+                    case "terminal": first.AccessibleName = "Terminal"; first.Focus(); break;
                     case "read": Console.WriteLine(JsonSerializer.Serialize(first.Text)); continue;
                     case "readSecond": Console.WriteLine(JsonSerializer.Serialize(second.Text)); continue;
                     case "exit": window.Close(); return;
@@ -350,6 +359,23 @@ internal static class Program
             string? actual = JsonSerializer.Deserialize<string>(await Command("read"));
             Assert(held == null && actual == example, $"Unicode insertion exactly once (held={held}, received length={actual?.Length})");
             Console.WriteLine("Cross-process focus and Unicode insertion checks passed.");
+            for (int i = 0; i < 60; i++)
+            {
+                Assert(Target().StillFocused(), "repeated native focus query");
+                GC.Collect(); GC.WaitForPendingFinalizers();
+            }
+            int worker = FocusProbe.Shared.ProcessId ?? throw new Exception("Missing native focus worker");
+            using (var crashed = Process.GetProcessById(worker)) { crashed.Kill(); crashed.WaitForExit(); }
+            Assert(Target().Window == window && FocusProbe.Shared.ProcessId != worker, "native focus worker restarted after termination");
+            Console.WriteLine("Repeated focus queries survived 60 forced garbage collections; worker termination recovered.");
+            foreach (string excluded in new[] { "readonly", "password", "terminal" })
+            {
+                await Command("first");
+                await Command(excluded);
+                Assert(Destination.Capture() == null, "exclude " + excluded + " field");
+            }
+            await Command("first");
+            Console.WriteLine("Read-only, password and terminal fields remain excluded.");
             if (session != null) { await session.RunAsync(Command, token); return; }
             if (files.Length == 0) return;
 
@@ -391,6 +417,7 @@ internal static class Program
         }
         finally
         {
+            FocusProbe.Shared.Dispose();
             field.StandardInput.Close();
             if (!field.WaitForExit(1500)) field.Kill();
         }

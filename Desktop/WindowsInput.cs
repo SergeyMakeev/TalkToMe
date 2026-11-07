@@ -1,7 +1,5 @@
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Windows.Automation;
-using System.Windows.Automation.Text;
 
 namespace TalkToMe;
 
@@ -33,46 +31,9 @@ internal sealed record Shortcut(uint Modifiers, Keys Key)
         ((Modifiers & 8) == 0 || WindowsInput.Down(Keys.LWin) || WindowsInput.Down(Keys.RWin));
 }
 
-internal sealed record Destination(nint Window, nint Focus, int[] ElementId)
+internal sealed record Destination(nint Window, nint Focus, int[] ElementId, bool NeedsSpace = false)
 {
-    public static Destination? Capture()
-    {
-        nint window = WindowsInput.GetForegroundWindow();
-        uint thread = WindowsInput.GetWindowThreadProcessId(window, out uint process);
-        if (window == 0 || thread == 0 || process == Environment.ProcessId) return null;
-        var gui = new WindowsInput.GuiThreadInfo { Size = Marshal.SizeOf<WindowsInput.GuiThreadInfo>() };
-        if (!WindowsInput.GetGUIThreadInfo(thread, ref gui) || gui.Focus == 0) return null;
-        try
-        {
-            var element = AutomationElement.FocusedElement;
-            if (element is null || element.Current.IsPassword || !element.Current.IsEnabled) return null;
-            var type = element.Current.ControlType;
-            if (element.TryGetCurrentPattern(ValuePattern.Pattern, out var value))
-            {
-                if (((ValuePattern)value).Current.IsReadOnly) return null;
-            }
-            else if (element.TryGetCurrentPattern(TextPattern.Pattern, out var pattern))
-            {
-                var readOnly = ((TextPattern)pattern).DocumentRange.GetAttributeValue(TextPattern.IsReadOnlyAttribute);
-                if (readOnly is true || (readOnly is not false && type != ControlType.Edit)) return null;
-            }
-            else if (type != ControlType.Edit) return null;
-
-            if (WindowsInput.IsTerminal(WindowsInput.ClassName(window))) return null;
-            // Embedded terminals can share a top-level HWND with a normal editor.
-            for (AutomationElement? el = element; el != null; el = TreeWalker.RawViewWalker.GetParent(el))
-            {
-                if (WindowsInput.IsTerminal(el.Current.ClassName) || WindowsInput.IsTerminal(el.Current.AutomationId) ||
-                    (el == element && WindowsInput.IsTerminal(el.Current.Name))) return null;
-                if (el.Current.NativeWindowHandle == window) break;
-            }
-            var id = element.GetRuntimeId();
-            if (id.Length == 0 || WindowsInput.GetForegroundWindow() != window) return null;
-            return new(window, gui.Focus, id);
-        }
-        catch (Exception e) when (Unavailable(e))
-        { return null; }
-    }
+    public static Destination? Capture() => FocusProbe.Shared.Capture();
 
     public bool StillFocused()
     {
@@ -80,29 +41,11 @@ internal sealed record Destination(nint Window, nint Focus, int[] ElementId)
         return now != null && Window == now.Window && Focus == now.Focus && ElementId.SequenceEqual(now.ElementId);
     }
 
-    private static bool Unavailable(Exception e) => e is ElementNotAvailableException or COMException or
-        InvalidOperationException or UnauthorizedAccessException or NotSupportedException or TimeoutException or ArgumentException;
-
     public string SpaceAtCaret(string text)
     {
-        if (!char.IsLetterOrDigit(text[0])) return text;
-        try
-        {
-            var el = AutomationElement.FocusedElement;
-            if (el == null || !ElementId.SequenceEqual(el.GetRuntimeId()) ||
-                !el.TryGetCurrentPattern(TextPattern.Pattern, out var pattern)) return text;
-            var selection = ((TextPattern)pattern).GetSelection();
-            if (selection.Length != 1) return text;
-            var range = selection[0];
-            if (range.CompareEndpoints(TextPatternRangeEndpoint.Start, range, TextPatternRangeEndpoint.End) != 0) return text;
-            var right = range.Clone();
-            if (right.MoveEndpointByUnit(TextPatternRangeEndpoint.End, TextUnit.Character, 1) == 1 &&
-                !string.IsNullOrWhiteSpace(right.GetText(2))) return text;
-            if (range.MoveEndpointByUnit(TextPatternRangeEndpoint.Start, TextUnit.Character, -1) != -1) return text;
-            string left = range.GetText(2);
-            return left.Length > 0 && (char.IsLetterOrDigit(left[^1]) || ".!?".Contains(left[^1])) ? " " + text : text;
-        }
-        catch (Exception e) when (Unavailable(e)) { return text; }
+        if (text.Length == 0 || !char.IsLetterOrDigit(text[0])) return text;
+        var now = Capture();
+        return now != null && Window == now.Window && Focus == now.Focus && ElementId.SequenceEqual(now.ElementId) && now.NeedsSpace ? " " + text : text;
     }
 }
 

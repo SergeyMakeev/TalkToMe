@@ -12,7 +12,7 @@ internal static class WindowsCrashEvents
         try
         {
             var query = new EventLogQuery("Application", PathType.LogName,
-                "*[System[(EventID=1000) and TimeCreated[timediff(@SystemTime) <= 604800000]]]") { ReverseDirection = true };
+                "*[System[(EventID=1000 or EventID=1026) and TimeCreated[timediff(@SystemTime) <= 604800000]]]") { ReverseDirection = true };
             using var reader = new EventLogReader(query);
             var elapsed = Stopwatch.StartNew();
             for (int i = 0; i < 200 && reports.Count < 5 && elapsed.Elapsed < TimeSpan.FromSeconds(2); i++)
@@ -32,6 +32,24 @@ internal static class WindowsCrashEvents
         var root = XElement.Parse(xml);
         XNamespace ns = root.Name.Namespace;
         var fields = root.Element(ns + "EventData")?.Elements(ns + "Data").ToArray() ?? [];
+        if ((string?)root.Element(ns + "System")?.Element(ns + "EventID") == "1026")
+        {
+            var lines = string.Join("\n", fields.Select(f => f.Value)).Split('\n').Select(s => s.Trim()).ToArray();
+            if (!lines.Contains("Application: TalkToMe.exe", StringComparer.OrdinalIgnoreCase)) return null;
+            var stack = new List<string> { "Windows .NET Runtime error (1026); UTC: " +
+                (string?)root.Element(ns + "System")?.Element(ns + "TimeCreated")?.Attribute("SystemTime") };
+            foreach (var line in lines)
+            {
+                if (line.StartsWith("Application:") || line.StartsWith("CoreCLR Version:") || line.StartsWith(".NET Version:")) stack.Add(line);
+                else if (line.StartsWith("Exception Info:"))
+                {
+                    string type = line["Exception Info:".Length..].Trim().Split(':')[0];
+                    if (type.All(c => char.IsAsciiLetterOrDigit(c) || "._+`[]".Contains(c))) stack.Add("Exception type: " + type);
+                }
+                else if (line.StartsWith("at ")) stack.Add(line.Split(" in ", 2)[0]);
+            }
+            return string.Join("\n", stack.Take(80));
+        }
         string[] names = ["AppName", "AppVersion", "AppTimeStamp", "ModuleName", "ModuleVersion", "ModuleTimeStamp",
             "ExceptionCode", "FaultingOffset", "ProcessId", "ProcessCreationTime"];
         var data = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -40,7 +58,8 @@ internal static class WindowsCrashEvents
             string? name = (string?)fields[i].Attribute("Name") ?? (i < names.Length ? names[i] : null);
             if (name != null && names.Contains(name, StringComparer.OrdinalIgnoreCase)) data[name] = fields[i].Value;
         }
-        if (!data.TryGetValue("AppName", out var app) || !app.Equals("TalkToMe.exe", StringComparison.OrdinalIgnoreCase)) return null;
+        if (!data.TryGetValue("AppName", out var app) || !(app.Equals("TalkToMe.exe", StringComparison.OrdinalIgnoreCase) ||
+            app.Equals("TalkToMe.FocusHost.exe", StringComparison.OrdinalIgnoreCase))) return null;
         var result = new List<string> { "Windows Application Error (1000); UTC: " +
             (string?)root.Element(ns + "System")?.Element(ns + "TimeCreated")?.Attribute("SystemTime") };
         foreach (string name in names)

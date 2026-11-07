@@ -25,7 +25,7 @@ internal static class Program
             Application.Run(window);
         }
         catch (Exception error) { Diagnostics.Error("startup failed", error); MessageBox.Show(error.Message, "TalkToMe", MessageBoxButtons.OK, MessageBoxIcon.Error); }
-        finally { Diagnostics.Event("exit", "Normal exit"); }
+        finally { FocusProbe.Shared.Dispose(); Diagnostics.Event("exit", "Normal exit"); }
     }
 
     private static string FindInstallation()

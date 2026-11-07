@@ -19,6 +19,7 @@
     <EmbeddedResource Include="../Shared/WindowsRuntime.json" LogicalName="TalkToMe.WindowsRuntime.json" />
     <Content Include="../Shared/GemmaTerms.txt;../Shared/GemmaNotice.txt;../Shared/ModelNotices.txt" Link="licenses/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <Content Include="../build/diagnostics/Release/TalkToMe.CrashMonitor.exe" Link="TalkToMe.CrashMonitor.exe" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <Content Include="../build/diagnostics/Release/TalkToMe.FocusHost.exe" Link="TalkToMe.FocusHost.exe" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <EmbeddedResource Include="Sounds/*.wav" />
     <EmbeddedResource Include="Icons/*.ico" />
     <PackageReference Include="NAudio.WinMM" Version="2.2.1" />
@@ -27,5 +28,6 @@
   <Target Name="CheckDiagnostics" BeforeTargets="PrepareForPublish" Condition="'$(SelfContained)' == 'true'">
     <Error Condition="!Exists('../build/diagnostics/Release/TalkToMe.CrashMonitor.exe')"
            Text="Build Desktop/Diagnostics with CMake before publishing." />
+    <Error Condition="!Exists('../build/diagnostics/Release/TalkToMe.FocusHost.exe')" Text="Build the native focus helper before publishing." />
   </Target>
 </Project>
