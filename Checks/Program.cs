@@ -215,6 +215,11 @@ internal static class Program
         var settings = Settings.Defaults(Environment.CurrentDirectory);
         settings.Translation = translation;
         settings.SpeechModel = speechModel;
+        // This checks the portable instruction set, not editing quality. The full
+        // engineering prompt is tested separately with --translation-check; scalar
+        // prefill of hundreds of tokens can exceed five minutes on hosted runners.
+        if (Environment.GetEnvironmentVariable("TALKTOME_CPU") == "portable" && translation.StartsWith("qwen"))
+            settings.Prompt = "Translate the Russian transcript into English. Return only the translation.";
         settings.Validate();
         settings.ModelDirectory = Path.GetFullPath(directory);
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(25));
