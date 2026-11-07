@@ -60,6 +60,8 @@ jobs:
         env:
           TALKTOME_CPU: portable
         run: dotnet run --project Checks -c Release --no-build -- --local-models build/model-check build/native-src/whisper.cpp/samples/jfk.wav qwen2
+      - name: Check Qwen engineering editing on the CPU
+        run: dotnet run --project Checks -c Release --no-build -- --translation-check build/model-check qwen2 cpu
       - name: Verify automatic fallback with NVIDIA devices hidden
         env:
           CUDA_VISIBLE_DEVICES: '-1'

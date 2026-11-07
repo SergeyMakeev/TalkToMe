@@ -22,11 +22,11 @@ internal static class EditingCheck
     {
         const string codeSample = "`x—y`\n```text\n- keep this.\n```\n🙂";
         Assert(DictationStyle.Apply(codeSample, codeSample) == codeSample, "code whitespace, punctuation and emoji preserved");
-        const string emojiSample = "Hi 👩🏽‍💻 🇺🇸 1️⃣ 🙂 `literal🙂` __EMOJI_0__";
+        const string emojiSample = "Hi 👩🏽‍💻 🇺🇸 1️⃣ 🙂 `literal🙂` __TTM_EMOJI_0__";
         var protectedEmoji = DictationStyle.Protect(emojiSample);
-        Assert(DictationStyle.Restore(emojiSample, protectedEmoji.Text) == emojiSample && protectedEmoji.Map.Count == 4, "emoji clusters, code and placeholder collisions");
-        Assert(DictationStyle.Restore("🙂", "__EMOJI_0__") == "🙂", "bare emoji placeholder");
-        try { DictationStyle.Restore("🙂", "__EMOJI_0__ __EMOJI_0__"); throw new Exception("Duplicate emoji accepted"); }
+        Assert(DictationStyle.Restore(emojiSample, protectedEmoji.Text) == emojiSample && protectedEmoji.Map.Count == 5, "emoji clusters, code and placeholder collisions");
+        Assert(DictationStyle.Restore("🙂", "__TTM_EMOJI_0__") == "🙂", "bare emoji placeholder");
+        try { DictationStyle.Restore("🙂", "__TTM_EMOJI_0__ __TTM_EMOJI_0__"); throw new Exception("Duplicate emoji accepted"); }
         catch (InvalidDataException) { }
         Assert(DictationStyle.Apply("", "It’s fine—really.\n1. Fix it.\n- Test it.") == "It's fine-really.\n1. Fix it\n- Test it", "ASCII prose and list punctuation");
         try { DictationStyle.Apply("`foo()`", "`bar()`"); throw new Exception("Changed code accepted"); }

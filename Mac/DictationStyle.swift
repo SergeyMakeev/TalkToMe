@@ -1,22 +1,35 @@
 import Foundation
 
 enum DictationStyle {
-    static func protect(_ source: String) -> (text: String, map: [(String, String)]) {
-        var prefix = "__EMOJI_"
+    private static func prefix(_ source: String) -> String {
+        var prefix = "__TTM_"
         while source.contains(prefix) { prefix = "_" + prefix }
+        return prefix
+    }
+    static func protect(_ source: String) -> (text: String, map: [(String, String)]) {
+        let prefix = Self.prefix(source)
         var map: [(String, String)] = []
         var text = ""
         let code = try! NSRegularExpression(pattern: #"(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)"#)
         let spans = code.matches(in: source, range: NSRange(source.startIndex..., in: source))
-        var offset = 0
-        for character in source {
-            let emoji = character.unicodeScalars.contains { (0x1F000...0x1FAFF).contains($0.value) || (0x2600...0x27BF).contains($0.value) || $0.value == 0xFE0F || $0.value == 0x20E3 }
-            if emoji && !spans.contains(where: { NSLocationInRange(offset, $0.range) }) {
-                let token = "`" + prefix + String(map.count) + "__`"
-                map.append((token, String(character))); text += token
-            } else { text.append(character) }
-            offset += String(character).utf16.count
+        func preserve(_ value: String, _ kind: String) {
+            let token = "`" + prefix + kind + "_" + String(map.count) + "__`"
+            map.append((token, value)); text += token
         }
+        func prose(_ value: String) {
+            for character in value {
+                let emoji = character.unicodeScalars.contains { (0x1F000...0x1FAFF).contains($0.value) || (0x2600...0x27BF).contains($0.value) || $0.value == 0xFE0F || $0.value == 0x20E3 }
+                if emoji { preserve(String(character), "EMOJI") } else { text.append(character) }
+            }
+        }
+        let input = source as NSString
+        var offset = 0
+        for span in spans {
+            prose(input.substring(with: NSRange(location: offset, length: span.range.location - offset)))
+            preserve(input.substring(with: span.range), "CODE")
+            offset = NSMaxRange(span.range)
+        }
+        prose(input.substring(from: offset))
         return (text, map)
     }
     static func restore(_ source: String, _ result: String) throws -> String {
@@ -24,9 +37,12 @@ enum DictationStyle {
         for (token, emoji) in protect(source).map {
             let bare = token.trimmingCharacters(in: CharacterSet(charactersIn: "`"))
             guard text.components(separatedBy: bare).count == 2 else {
-                throw Failure("The editor changed an emoji. Retry processing or copy the source transcript.")
+                throw Failure("The editor changed protected code or an emoji. Retry processing or copy the source transcript.")
             }
             text = text.replacingOccurrences(of: text.contains(token) ? token : bare, with: emoji)
+        }
+        guard !text.contains(prefix(source)) else {
+            throw Failure("The editor added an unknown placeholder. Retry processing or copy the source transcript.")
         }
         return text
     }

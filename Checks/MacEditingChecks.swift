@@ -10,12 +10,12 @@ private func editingFixture(_ name: String) throws -> [[String: Any]] {
 
 func checkEditingResponses() throws {
     let codeSample = "`x—y`\n```text\n- keep this.\n```\n🙂"
-    let emojiSample = "Hi 👩🏽‍💻 🇺🇸 1️⃣ 🙂 `literal🙂` __EMOJI_0__"
+    let emojiSample = "Hi 👩🏽‍💻 🇺🇸 1️⃣ 🙂 `literal🙂` __TTM_EMOJI_0__"
     let protectedEmoji = DictationStyle.protect(emojiSample)
     guard try DictationStyle.restore(emojiSample, protectedEmoji.text) == emojiSample,
-          protectedEmoji.map.count == 4,
-          try DictationStyle.restore("🙂", "__EMOJI_0__") == "🙂",
-          (try? DictationStyle.restore("🙂", "__EMOJI_0__ __EMOJI_0__")) == nil else {
+          protectedEmoji.map.count == 5,
+          try DictationStyle.restore("🙂", "__TTM_EMOJI_0__") == "🙂",
+          (try? DictationStyle.restore("🙂", "__TTM_EMOJI_0__ __TTM_EMOJI_0__")) == nil else {
         throw Failure("Emoji clusters or placeholders were not preserved.")
     }
     guard try DictationStyle.apply(codeSample, codeSample) == codeSample,

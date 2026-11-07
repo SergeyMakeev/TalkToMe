@@ -8,31 +8,49 @@ internal static class DictationStyle
 {
     private static readonly Regex Code = new(@"(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)");
     private static bool IsEmoji(string element) => element.EnumerateRunes().Any(r => r.Value is >= 0x1F000 and <= 0x1FAFF or >= 0x2600 and <= 0x27BF or 0xFE0F or 0x20E3);
-    internal static (string Text, List<(string Token, string Emoji)> Map) Protect(string source)
+    private static string Prefix(string source)
     {
-        string prefix = "__EMOJI_";
+        string prefix = "__TTM_";
         while (source.Contains(prefix)) prefix = "_" + prefix;
+        return prefix;
+    }
+    internal static (string Text, List<(string Token, string Value)> Map) Protect(string source)
+    {
+        string prefix = Prefix(source);
         var map = new List<(string, string)>();
         var text = new StringBuilder();
-        var code = Code.Matches(source).ToArray();
-        var elements = StringInfo.GetTextElementEnumerator(source);
-        while (elements.MoveNext())
+        void Preserve(string value, string kind)
         {
-            string element = elements.GetTextElement();
-            if (!IsEmoji(element) || code.Any(c => elements.ElementIndex >= c.Index && elements.ElementIndex < c.Index + c.Length)) { text.Append(element); continue; }
-            string token = "`" + prefix + map.Count + "__`";
-            map.Add((token, element)); text.Append(token);
+            string token = "`" + prefix + kind + "_" + map.Count + "__`";
+            map.Add((token, value)); text.Append(token);
         }
+        void Prose(string value)
+        {
+            var elements = StringInfo.GetTextElementEnumerator(value);
+            while (elements.MoveNext())
+            {
+                string element = elements.GetTextElement();
+                if (IsEmoji(element)) Preserve(element, "EMOJI"); else text.Append(element);
+            }
+        }
+        int offset = 0;
+        foreach (Match code in Code.Matches(source))
+        {
+            Prose(source[offset..code.Index]); Preserve(code.Value, "CODE");
+            offset = code.Index + code.Length;
+        }
+        Prose(source[offset..]);
         return (text.ToString(), map);
     }
     internal static string Restore(string source, string result)
     {
-        foreach (var (token, emoji) in Protect(source).Map)
+        foreach (var (token, value) in Protect(source).Map)
         {
             string bare = token.Trim('`');
-            if (result.Split(bare).Length != 2) throw new InvalidDataException("The editor changed an emoji. Retry processing or copy the source transcript.");
-            result = result.Replace(result.Contains(token) ? token : bare, emoji);
+            if (result.Split(bare).Length != 2) throw new InvalidDataException("The editor changed protected code or an emoji. Retry processing or copy the source transcript.");
+            result = result.Replace(result.Contains(token) ? token : bare, value);
         }
+        if (result.Contains(Prefix(source))) throw new InvalidDataException("The editor added an unknown placeholder. Retry processing or copy the source transcript.");
         return result;
     }
     internal static string Apply(string source, string result)

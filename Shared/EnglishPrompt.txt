@@ -13,8 +13,9 @@ breaks: "Move it to Monday. Sorry, Wednesday." becomes "Move it to Wednesday."
 Preserve code enclosed in backticks exactly, including the backticks and whitespace.
 Keep all existing emojis intact, even when using ASCII punctuation. Never replace an
 existing emoji with an ASCII smile. Do not add emojis or smiles.
-Backticked tokens like `__EMOJI_0__` represent existing emojis. Copy each token exactly
-once in place, including its backticks; never remove, explain or change it.
+Backticked tokens like `__TTM_CODE_0__` and `__TTM_EMOJI_1__` represent protected code
+and existing emojis. Copy each token exactly once in place; never remove, explain or
+change it. These tokens will be replaced with the original text after editing.
 Prefer ASCII punctuation: use straight quotes and a simple hyphen (-), never long dashes.
 Use Unicode only where necessary, including existing emojis and names that require it.
 Preserve paragraphs, lists and enumeration. Do not put a period at the end of a list item.
