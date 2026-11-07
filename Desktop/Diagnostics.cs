@@ -80,18 +80,30 @@ internal static class Diagnostics
         foreach (string name in new[] { "events.log.previous", "events.log", "monitor.txt" })
         {
             string path = Path.Combine(DirectoryPath, name);
-            if (File.Exists(path)) { report.AppendLine("\n--- " + name + " ---"); report.AppendLine(string.Join('\n', File.ReadLines(path).TakeLast(500))); }
+            if (File.Exists(path)) { report.AppendLine("\n--- " + name + " ---"); report.AppendLine(string.Join('\n', ReadLiveLog(path).Split('\n').TakeLast(500))); }
         }
         if (Directory.Exists(DirectoryPath))
         {
             foreach (var file in new DirectoryInfo(DirectoryPath).GetFiles("monitor-*.txt").OrderByDescending(f => f.LastWriteTimeUtc).Take(8))
-            { report.AppendLine("\n--- " + file.Name + " ---"); report.AppendLine(File.ReadAllText(file.FullName)); }
+            { report.AppendLine("\n--- " + file.Name + " ---"); report.AppendLine(ReadLiveLog(file.FullName)); }
             foreach (var file in new DirectoryInfo(DirectoryPath).GetFiles("crash-*.txt").OrderByDescending(f => f.LastWriteTimeUtc).Take(3))
-            { report.AppendLine("\n--- " + file.Name + " ---"); report.AppendLine(File.ReadAllText(file.FullName)); }
+            { report.AppendLine("\n--- " + file.Name + " ---"); report.AppendLine(ReadLiveLog(file.FullName)); }
         }
         report.AppendLine("\n--- Windows crash records (last seven days) ---");
         report.AppendLine(WindowsCrashEvents.Report());
         return report.ToString();
+    }
+    private static string ReadLiveLog(string path)
+    {
+        try
+        {
+            // The native monitor keeps its current session file open for writing.
+            using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(file);
+            return reader.ReadToEnd();
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        { return $"Log temporarily unavailable ({error.GetType().Name}; 0x{error.HResult:X8})."; }
     }
     internal static void OpenFolder()
     {

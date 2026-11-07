@@ -23,7 +23,11 @@ internal static class DiagnosticsCheck
     internal static void Child(string directory, bool terminate = false)
     {
         Diagnostics.Initialize(directory);
-        if (terminate) Environment.Exit(37);
+        if (terminate)
+        {
+            File.WriteAllText(Path.Combine(directory, "copied-report.txt"), Diagnostics.Report(Settings.Defaults(Environment.CurrentDirectory)));
+            Environment.Exit(37);
+        }
         // Deliberately fault only the disposable check process, never the app.
         ThreadPool.QueueUserWorkItem(_ => throw new InvalidOperationException("PRIVATE-DICTATION-MUST-NOT-APPEAR"));
         Thread.Sleep(Timeout.Infinite);
@@ -58,6 +62,9 @@ internal static class DiagnosticsCheck
             await exit.WaitForExitAsync(timeout.Token);
             await exitErrors;
             if (exit.ExitCode != 37) throw new Exception("Unexpected termination-check exit code");
+            string copied = File.ReadAllText(Path.Combine(directory, "copied-report.txt"));
+            if (!copied.Contains("Attached. App will survive") || copied.Contains("Log temporarily unavailable") || copied.Contains("PRIVATE-DICTATION-MUST-NOT-APPEAR"))
+                throw new Exception("Could not copy the live crash-monitor report safely");
             var monitors = Directory.GetFiles(directory, "monitor-*.txt");
             if (monitors.Length != 2) throw new Exception("Restart overwrote monitor history");
             string history = string.Join("\n", monitors.Select(File.ReadAllText));
