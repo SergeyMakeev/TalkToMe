@@ -319,18 +319,23 @@ internal sealed class DictationWindow : Form
         IAudioCapture? capture = null;
         try
         {
+            // UI Automation and native device setup can pump this STA's message
+            // loop. Own the session before either call can reenter WndProc.
+            current = s; dispatched = false;
+            SetBusy(true);
             Diagnostics.Event("recording.start", $"Speech={settings.SpeechModel}; editor={settings.Translation}; GPU={settings.UseGpu}; input={settings.Microphone}");
             Diagnostics.Event("target.capture.start");
             s.Target = settings.CopyOnly ? null : Destination.Capture();
+            s.Cancel.Token.ThrowIfCancellationRequested();
             Diagnostics.Event("target.capture.finished", s.Target == null ? "No insertion target" : "Target captured");
             Diagnostics.Event("microphone.open");
             capture = openMicrophone(settings.Microphone);
+            s.Cancel.Token.ThrowIfCancellationRequested();
             Diagnostics.Event("microphone.start");
             capture.Start();
-            current = s; dispatched = false;
+            s.Cancel.Token.ThrowIfCancellationRequested();
             original.Clear(); english.Clear(); microphone = capture;
             PlaySound(true);
-            SetBusy(true);
             var hint = settings.Toggle ? "Press shortcut to finish" : "Release to finish";
             SetStatus("Recording. " + hint + (cancelRegistered ? $". {settings.CancelShortcut} cancels." : "."),
                 "Recording  ·  " + hint);

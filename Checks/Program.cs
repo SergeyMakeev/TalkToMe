@@ -78,6 +78,7 @@ internal static class Program
         EngineInstallCheck.Run().GetAwaiter().GetResult();
         CheckSettings();
         PerformanceCheck.Check();
+        DiagnosticsCheck.CheckEvents();
         EditingCheck.Check();
         foreach (string bad in new[] { "length", "tool_calls", "" })
             Reject(JsonSerializer.Serialize(new { choices = new[] { new { finish_reason = bad, message = new { content = "Partial" } } } }));

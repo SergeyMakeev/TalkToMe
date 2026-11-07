@@ -89,6 +89,8 @@ internal static class Diagnostics
             foreach (var file in new DirectoryInfo(DirectoryPath).GetFiles("crash-*.txt").OrderByDescending(f => f.LastWriteTimeUtc).Take(3))
             { report.AppendLine("\n--- " + file.Name + " ---"); report.AppendLine(File.ReadAllText(file.FullName)); }
         }
+        report.AppendLine("\n--- Windows crash records (last seven days) ---");
+        report.AppendLine(WindowsCrashEvents.Report());
         return report.ToString();
     }
     internal static void OpenFolder()

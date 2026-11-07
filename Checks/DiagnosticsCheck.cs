@@ -4,6 +4,22 @@ using TalkToMe;
 
 internal static class DiagnosticsCheck
 {
+    internal static void CheckEvents()
+    {
+        const string xml = """
+            <Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+              <System><EventID>1000</EventID><TimeCreated SystemTime="2026-11-07T05:12:35Z" /></System>
+              <EventData><Data Name="AppName">TalkToMe.exe</Data><Data Name="ModuleName">uiautomationcore.dll</Data>
+                <Data Name="ExceptionCode">c0000005</Data><Data Name="AppPath">C:\PRIVATE\TalkToMe.exe</Data>
+                <Data Name="ModulePath">C:\PRIVATE\module.dll</Data><Data Name="Message">PRIVATE</Data></EventData>
+            </Event>
+            """;
+        string text = WindowsCrashEvents.Summarize(xml) ?? throw new Exception("App crash event omitted");
+        if (!text.Contains("uiautomationcore.dll") || !text.Contains("c0000005") || text.Contains("PRIVATE")) throw new Exception("Crash event fields missing or private fields included");
+        if (WindowsCrashEvents.Summarize(xml.Replace("TalkToMe.exe", "AnotherApp.exe")) != null) throw new Exception("Unrelated app event included");
+        Console.WriteLine("Windows crash-event filtering and privacy checks passed.");
+    }
+
     internal static void Child(string directory, bool terminate = false)
     {
         Diagnostics.Initialize(directory);
