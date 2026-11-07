@@ -29,11 +29,17 @@ Pushing the tag starts the same workflow with publishing enabled. Choose either 
 
 | Release asset | Installation |
 | --- | --- |
-| `TalkToMe-Windows-x64.zip` | Extract the whole archive, open `TalkToMe.exe`, choose speech and optional translation models, and click **Download and save**. The app includes its .NET, Whisper, Parakeet and llama.cpp runtimes. |
+| `TalkToMe-Windows-x64.zip` | Extract the archive, open `TalkToMe.exe`, choose models, and click **Download and save**. .NET and the crash monitor are included; the app downloads and caches its verified CPU engines and optional CUDA engines separately. |
 | `TalkToMe-macOS-arm64.dmg` | For Apple silicon. Open the DMG, drag TalkToMe to Applications, and eject the disk image. |
 | `TalkToMe-macOS-x86_64.dmg` | For Intel Macs. Open the DMG, drag TalkToMe to Applications, and eject the disk image. |
 
 See the [app README](../../README.md) for microphone permissions, speech models, and llama-server setup.
+
+## Shared Windows engines
+
+Ordinary app builds use `Shared/WindowsRuntime.json`, which pins immutable CPU and CUDA ZIP URLs, sizes, SHA-256 hashes and file inventories. Do not rebuild or attach these engines to every app release. The app automatically installs them once in the current user's cache; non-NVIDIA machines do not download CUDA.
+
+When changing native engine source, run **Windows shared runtime** or build locally with `Shared/build_engines.py` and run `Shared/package_windows_runtime.py`. Publish both generated ZIPs and the manifest under `runtime-<version>` with `--latest=false`. Commit the generated `Shared/WindowsRuntime.json` before publishing an app that uses it. Never replace published runtime files: changing bytes requires a new content-derived runtime tag. The runtime release must exist before app CI can test its downloads. Keep every runtime referenced by a supported app release when cleaning up old app releases; retain Git tags for source history.
 
 ## Mac previews
 

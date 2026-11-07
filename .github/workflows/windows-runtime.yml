@@ -1,0 +1,73 @@
+name: Windows shared runtime
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the immutable shared CPU and CUDA assets
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: windows-2022
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [llama, whisper, parakeet]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v6
+        id: cache
+        with:
+          path: build/engines
+          key: windows-native-${{ matrix.engine }}-${{ hashFiles('Shared/build_engines.py', 'Shared/ParakeetHost.*', 'Shared/WhisperBridge.*', 'Desktop/Native/**', 'Shared/*LICENSE*', 'Shared/ModelNotices.txt') }}
+      - uses: Jimver/cuda-toolkit@v0.2.30
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          cuda: '13.0.0'
+          method: network
+          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "visual_studio_integration", "crt", "thrust", "nvvm"]'
+      - name: Build runtime component
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: python Shared/build_engines.py build/engines --cuda --engine ${{ matrix.engine }}
+      - uses: actions/upload-artifact@v6
+        with:
+          name: native-${{ matrix.engine }}
+          path: build/engines/
+          retention-days: 3
+  package:
+    needs: native
+    runs-on: windows-2022
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: native-*
+          path: build/engines
+          merge-multiple: true
+      - run: python Shared/package_windows_runtime.py
+      - uses: actions/upload-artifact@v6
+        with:
+          name: Windows-runtime-manifest
+          path: Shared/WindowsRuntime.json
+          retention-days: 7
+      - name: Publish immutable runtime assets
+        if: inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $manifest = Get-Content Shared/WindowsRuntime.json -Raw | ConvertFrom-Json
+          $tag = 'runtime-' + $manifest.version
+          $assets = @((Get-ChildItem build/runtime-assets/*.zip).FullName) + @('Shared/WindowsRuntime.json')
+          gh release create $tag @assets --target $env:GITHUB_SHA --title "Windows runtime $($manifest.version)" --notes 'Shared CPU and optional CUDA engines. App releases pin this download by SHA-256. Keep this release while any supported app references it. Commit the generated WindowsRuntime.json before shipping an app that uses this runtime.' --latest=false
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

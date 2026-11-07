@@ -17,6 +17,7 @@ internal sealed class BundledSpeech : IDisposable
     public async Task<string> RunAsync(byte[]? pcm, string language, Settings settings, CancellationToken token, ProcessingMetrics? metrics = null)
     {
         token.ThrowIfCancellationRequested();
+        await EngineInstall.EnsureAsync(settings, token);
         var speech = ModelDownload.Get(settings.SpeechModel);
         var vad = ModelDownload.Get("activity");
         string host = settings.SpeechModel == "parakeet" ? "TalkToMeParakeetHost.exe" : "TalkToMeSpeechHost.exe";

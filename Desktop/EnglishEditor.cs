@@ -53,14 +53,15 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
         // Tiny 0.8B tends to copy examples verbatim. Larger models benefit from them.
         if (settings.LocalTranslation && settings.Translation != "qwen08" && defaults)
             messages.AddRange(LocalEditing.GetProperty("examples").EnumerateArray().Select(x => (object)x));
-        string user = JsonSerializer.Serialize(new { glossary = settings.Glossary, transcript }, TranscriptJson);
+        string protectedInput = defaults ? DictationStyle.Protect(transcript).Text : transcript;
+        string user = JsonSerializer.Serialize(new { glossary = settings.Glossary, transcript = protectedInput }, TranscriptJson);
         if (settings.LocalTranslation && defaults) user = LocalEditing.GetProperty("user_prefix").GetString() + user;
         messages.Add(new { role = "user", content = user });
         var body = new Dictionary<string, object> {
             ["model"] = model, ["messages"] = messages,
             ["chat_template_kwargs"] = new { enable_thinking = false },
             ["temperature"] = settings.Temperature,
-            ["max_tokens"] = Math.Clamp(transcript.Length + 96, 160, 4096), ["stream"] = false
+            ["max_tokens"] = Math.Clamp(protectedInput.Length + 96, 160, 4096), ["stream"] = false
         };
         if (settings.LocalTranslation) body["response_format"] = LocalEditing.GetProperty("response_format");
         return body;
@@ -125,9 +126,14 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
             throw new HttpRequestException($"llama-server returned HTTP {(int)response.StatusCode}. Check serverUrl, model, API key and context size.", null, response.StatusCode);
         using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync(token));
         metrics?.ReadTranslationDetails(json.RootElement);
-        string text = CompleteText(json.RootElement, config.LocalTranslation && config.Translation != "translategemma", transcript);
+        string guardInput = string.IsNullOrWhiteSpace(config.Prompt) && config.Translation != "translategemma" ? DictationStyle.Protect(transcript).Text : transcript;
+        string text = CompleteText(json.RootElement, config.LocalTranslation && config.Translation != "translategemma", guardInput);
         if (config.Translation == "translategemma" && text.Length > Math.Max(256L, transcript.Length * 4L))
             throw new InvalidDataException("TranslateGemma expanded the dictation unexpectedly. Retry or copy the transcript.");
+        if (config.Translation != "translategemma" && string.IsNullOrWhiteSpace(config.Prompt))
+        {
+            text = DictationStyle.Apply(transcript, DictationStyle.Restore(transcript, text));
+        }
         return text;
     }
 

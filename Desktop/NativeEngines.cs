@@ -8,7 +8,7 @@ internal static class NativeEngines
 {
     internal sealed record GpuDevice(string? Id, string? Name, string Reason);
     private static readonly Lazy<Task<GpuDevice>> gpu = new(ProbeGpuAsync);
-    internal static string CudaPath(string file) => Path.Combine(AppContext.BaseDirectory, "engines", "cuda", file);
+    internal static string CudaPath(string file) => Path.Combine(EngineInstall.CudaDirectory, file);
     internal static async Task<GpuDevice> GpuAsync(bool enabled, CancellationToken token)
     {
         if (!enabled) return new(null, null, "GPU disabled in Settings.");
@@ -19,7 +19,7 @@ internal static class NativeEngines
     private static async Task<GpuDevice> ProbeGpuAsync()
     {
         foreach (var name in new[] { "TalkToMeSpeechHost.exe", "llama-server.exe", "cudart64_13.dll", "cublas64_13.dll", "cublasLt64_13.dll" })
-            if (!File.Exists(CudaPath(name))) return new(null, null, "Bundled CUDA runtime files are missing.");
+            if (!File.Exists(CudaPath(name))) return new(null, null, EngineInstall.CudaFailure.Length > 0 ? EngineInstall.CudaFailure : "CUDA runtime is not installed; CPU selected.");
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         using var process = new Process { StartInfo = ProcessInfo(CudaPath("TalkToMeSpeechHost.exe")) };
         process.StartInfo.ArgumentList.Add("--probe");
@@ -59,8 +59,12 @@ internal static class NativeEngines
     }
     internal static bool SupportsAvx2 => Avx2.IsSupported && Fma.IsSupported && Bmi2.IsSupported &&
         (X86Base.CpuId(1, 0).Ecx & (1 << 29)) != 0; // F16C
-    internal static string PathFor(string file) => Select(AppContext.BaseDirectory, file, SupportsAvx2,
-        Environment.GetEnvironmentVariable("TALKTOME_CPU") == "portable");
+    internal static string PathFor(string file)
+    {
+        string fast = Path.Combine(EngineInstall.CpuDirectory, "avx2", file);
+        return SupportsAvx2 && Environment.GetEnvironmentVariable("TALKTOME_CPU") != "portable" && File.Exists(fast)
+            ? fast : Path.Combine(EngineInstall.CpuDirectory, file);
+    }
     internal static string Select(string root, string file, bool avx2, bool portable)
     {
         var fast = Path.Combine(root, "engines", "avx2", file);

@@ -74,7 +74,7 @@ internal sealed class DictationWindow : Form
             Text = $"Dictate at the cursor   ·   {settings.Shortcut}" };
         layout.Controls.Add(instructions, 0, 0);
         var options = Row();
-        language = Choice(["Auto", "Russian", "English"], settings.Language switch { "ru" => 1, "en" => 2, _ => 0 });
+        language = Choice(["English / Russian", "Russian", "English"], settings.Language switch { "ru" => 1, "en" => 2, _ => 0 });
         language.SelectedIndexChanged += (_, _) => { if (!configuring) { this.settings.Language = new[] { "auto", "ru", "en" }[language.SelectedIndex]; SaveSettings(); } };
         mode = Choice(["Hold to talk", "Press to toggle"], settings.Toggle ? 1 : 0);
         mode.SelectedIndexChanged += (_, _) => { if (!configuring) { this.settings.Toggle = mode.SelectedIndex == 1; SaveSettings(); } };
@@ -106,6 +106,9 @@ internal sealed class DictationWindow : Form
         layout.Controls.Add(actions, 0, 7);
         var timingRow = Row();
         timingRow.Controls.AddRange([timingLabel, performanceButton]);
+        var debug = new Button { Text = "Copy debug report", AutoSize = true };
+        debug.Click += (_, _) => { try { Copy(Diagnostics.Report(settings)); } catch (Exception ex) { SetStatus("Could not read diagnostics: " + ex.Message, null); } };
+        timingRow.Controls.Add(debug);
         performanceButton.Click += (_, _) => ShowPerformance();
         layout.Controls.Add(timingRow, 0, 8);
         layout.Controls.Add(new Label { AutoSize = true, Text = "Close to keep dictating. Open or quit TalkToMe from the notification area." }, 0, 9);
@@ -187,6 +190,9 @@ internal sealed class DictationWindow : Form
         SetStatus("Loading dictation models. You can start dictating.", null);
         try
         {
+            await EngineInstall.EnsureAsync(settings, token, new Progress<string>(message => {
+                if (!exiting && !token.IsCancellationRequested && microphone == null) SetStatus(message, busy ? "Setting up engines…" : null);
+            }));
             await Task.WhenAll(asr.RunAsync(null, "auto", token), editor.PrepareAsync(token));
             if (current == atStart && !busy && !exiting && !token.IsCancellationRequested) SetStatus("Ready. Focus a text field and use the dictation shortcut.", null);
         }
@@ -309,21 +315,23 @@ internal sealed class DictationWindow : Form
 
     private async void StartCapture()
     {
-        var s = new Session(settings.Language, settings.CopyOnly ? null : Destination.Capture());
+        var s = new Session(settings.Language, null);
         IAudioCapture? capture = null;
         try
         {
+            Diagnostics.Event("recording.start", $"Speech={settings.SpeechModel}; editor={settings.Translation}; GPU={settings.UseGpu}; input={settings.Microphone}");
+            s.Target = settings.CopyOnly ? null : Destination.Capture();
             capture = openMicrophone(settings.Microphone);
             capture.Start();
             current = s; dispatched = false;
             original.Clear(); english.Clear(); microphone = capture;
-            if (settings.Sounds) playRecordingSound(true);
+            PlaySound(true);
             SetBusy(true);
             var hint = settings.Toggle ? "Press shortcut to finish" : "Release to finish";
             SetStatus("Recording. " + hint + (cancelRegistered ? $". {settings.CancelShortcut} cancels." : "."),
                 "Recording  ·  " + hint);
             byte[] pcm;
-            try { pcm = await capture.Completion; }
+            try { pcm = await capture.Completion.WaitAsync(s.Cancel.Token); }
             finally { RecordingEnded(capture); }
             capture.Dispose(); capture = null;
             if (current != s || exiting) return;
@@ -333,22 +341,33 @@ internal sealed class DictationWindow : Form
         }
         catch (Exception ex)
         {
+            if (s.Cancel.IsCancellationRequested) return;
+            Diagnostics.Error("recording.failed", ex);
             if (!exiting && (current == s || !busy))
             {
                 microphone = null; SetBusy(false);
                 SetStatus("Microphone: " + ex.Message + " Check the recording device and Windows microphone access.", "Microphone unavailable", true);
             }
         }
-        finally { capture?.Dispose(); }
+        finally { try { capture?.Dispose(); } catch (Exception ex) { Diagnostics.Error("recording.dispose", ex); } }
     }
 
     private void StopCapture()
     {
         var capture = microphone;
         if (capture == null) return;
-        current!.Latency.Start();
-        capture.Stop();
-        RecordingEnded(capture);
+        current?.Latency.Start();
+        Diagnostics.Event("recording.stop");
+        try { capture.Stop(); }
+        catch (Exception error)
+        {
+            Diagnostics.Error("recording.stop failed", error);
+            current?.Cancel.Cancel();
+            current = null;
+            SetBusy(false);
+            SetStatus("The microphone could not stop recording. Check the device and try again. Debug information was saved.", "Recording failed", true);
+        }
+        finally { RecordingEnded(capture); }
     }
 
     private void RecordingEnded(IAudioCapture capture)
@@ -358,13 +377,21 @@ internal sealed class DictationWindow : Form
         if (microphone != capture) return;
         microphone = null;
         UpdateTrayIcon();
-        if (settings.Sounds) playRecordingSound(false);
+        PlaySound(false);
+    }
+
+    private void PlaySound(bool recording)
+    {
+        if (!settings.Sounds) return;
+        try { playRecordingSound(recording); }
+        catch (Exception error) { Diagnostics.Error("sound playback", error); }
     }
 
     private void CancelSession()
     {
         if (!busy || dispatched || current == null) return;
         var s = current;
+        Diagnostics.Event("recording.cancel");
         StopCapture();
         current = null;
         s.Cancel.Cancel();
@@ -393,6 +420,7 @@ internal sealed class DictationWindow : Form
         {
             if (s.Transcript.Length == 0 || language != s.Language)
             {
+                Diagnostics.Event("speech.start", $"Model={settings.SpeechModel}; language={language}; audioSeconds={(s.Audio?.Length ?? 0) / 32000d:F2}");
                 SetStatus("Transcribing speech…", "Transcribing…");
                 s.Transcript = await asr.RunAsync(s.Audio!, language, token, metrics);
                 if (current != s || exiting) return;
@@ -409,10 +437,12 @@ internal sealed class DictationWindow : Form
                 return;
             }
             if (settings.Translation != "transcript") SetStatus("Writing English…", "Writing English…");
+            Diagnostics.Event("editing.start", settings.Translation);
             var result = await editor.EditAsync(s.Transcript, token, metrics);
             if (current != s || exiting) return;
             english.Text = result.ReplaceLineEndings();
             var insertion = Stopwatch.StartNew();
+            Diagnostics.Event("insertion.start", insert && !settings.CopyOnly ? "automatic" : "review");
             string? held = !insert || settings.CopyOnly ? "Review requested." : await Insertion.TryAsync(Handle, s.Target, s.ClipboardSequence, shortcut.Key, result, token, () =>
             {
                 dispatched = true; cancel.Enabled = false;
@@ -427,6 +457,7 @@ internal sealed class DictationWindow : Form
         }
         catch (Exception ex)
         {
+            if (!token.IsCancellationRequested) Diagnostics.Error("processing.failed", ex);
             outcome = token.IsCancellationRequested ? "cancelled" : ex is TaskCanceledException ? "timed out" : "failed";
             if (current == s && !exiting)
                 SetStatus(ex is TaskCanceledException ? "Processing timed out. Check llama-server and retry." : ex.Message,
@@ -435,6 +466,7 @@ internal sealed class DictationWindow : Form
         finally
         {
             metrics.Finish(token.IsCancellationRequested ? "cancelled" : outcome);
+            Diagnostics.Event("processing.finished", metrics.Json());
             performance.Add(metrics);
             if (performance.Count > 20) performance.RemoveAt(0);
             if (!exiting)

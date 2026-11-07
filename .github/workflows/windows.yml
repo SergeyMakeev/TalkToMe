@@ -5,6 +5,11 @@ on:
     branches: ['**']
   pull_request:
   workflow_dispatch:
+    inputs:
+      version:
+        description: Version for the packaged app (optional)
+        required: false
+        type: string
   workflow_call:
     inputs:
       version:
@@ -15,41 +20,7 @@ permissions:
   contents: read
 
 jobs:
-  native:
-    runs-on: windows-2022
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix:
-        engine: [llama, whisper, parakeet]
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-      - uses: actions/cache@v6
-        id: native-cache
-        with:
-          path: build/engines
-          key: windows-2022-native-${{ matrix.engine }}-${{ hashFiles('Shared/build_engines.py', 'Shared/ParakeetHost.*', 'Shared/WhisperBridge.*', 'Desktop/Native/**', 'Shared/*LICENSE*', 'Shared/ModelNotices.txt') }}
-      - name: Install build-time CUDA toolkit
-        if: steps.native-cache.outputs.cache-hit != 'true'
-        uses: Jimver/cuda-toolkit@v0.2.30
-        with:
-          cuda: '13.0.0'
-          method: network
-          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "visual_studio_integration", "crt", "thrust", "nvvm"]'
-      - name: Build bundled runtime
-        if: steps.native-cache.outputs.cache-hit != 'true'
-        run: python Shared/build_engines.py build/engines --cuda --engine ${{ matrix.engine }}
-      - uses: actions/upload-artifact@v6
-        with:
-          name: native-windows-${{ matrix.engine }}
-          path: build/engines/
-          if-no-files-found: error
-
   build:
-    needs: native
     runs-on: windows-2022
     timeout-minutes: 90
     env:
@@ -62,11 +33,15 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      - uses: actions/download-artifact@v8
+      - uses: actions/cache@v6
         with:
-          pattern: native-windows-*
-          path: build/engines
-          merge-multiple: true
+          path: ~/AppData/Local/TalkToMe/engines
+          key: windows-runtime-${{ hashFiles('Shared/WindowsRuntime.json') }}
+      - name: Build the small crash monitor
+        run: |
+          cmake -S Desktop/Diagnostics -B build/diagnostics -A x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build build/diagnostics --config Release --parallel 4
       - name: Fetch pinned speech test audio
         run: |
           New-Item -ItemType Directory -Force build/native-src/whisper.cpp/samples
@@ -75,6 +50,10 @@ jobs:
         run: dotnet build Checks/TalkToMe.Checks.csproj --configuration Release "-p:Version=$env:APP_VERSION"
       - name: Run noninteractive checks
         run: dotnet run --project Checks/TalkToMe.Checks.csproj --configuration Release --no-build
+      - name: Verify crash dumps in a disposable process
+        run: dotnet run --project Checks -c Release --no-build -- --crash-check
+      - name: Verify hotkey release and microphone failure recovery
+        run: dotnet run --project Checks -c Release --no-build -- --capture-check
       - name: Download the default models, transcribe and translate using the bundled engines
         run: dotnet run --project Checks -c Release --no-build -- --local-models build/model-check build/native-src/whisper.cpp/samples/jfk.wav qwen2
       - name: Verify portable CPU fallback
@@ -109,6 +88,7 @@ jobs:
           name: TalkToMe-Windows
           path: build/app/
           if-no-files-found: error
+          retention-days: 3
       - name: Package Windows x64 release
         if: inputs.version
         shell: pwsh
@@ -116,14 +96,10 @@ jobs:
           $package = 'build/windows-release'
           dotnet publish Desktop/TalkToMe.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true "-p:Version=$env:APP_VERSION" -o $package
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          foreach ($file in 'TalkToMe.exe','engines/TalkToMeSpeechHost.exe','engines/llama-server.exe','engines/avx2/TalkToMeSpeechHost.exe','engines/avx2/llama-server.exe','engines/cuda/TalkToMeSpeechHost.exe','engines/cuda/llama-server.exe','engines/cuda/cudart64_13.dll','engines/cuda/cublas64_13.dll','engines/cuda/cublasLt64_13.dll','engines/cuda/CUDA-EULA.txt') {
+          foreach ($file in 'TalkToMe.exe','TalkToMe.CrashMonitor.exe') {
             if (!(Test-Path -LiteralPath (Join-Path $package $file))) { throw "Missing release file: $file" }
           }
-          foreach ($variant in 'engines','engines/avx2','engines/cuda') {
-            foreach ($name in 'TalkToMeParakeetHost.exe','nemo_speech_asr.dll','nemo_speech_asr_c.dll') {
-              if (!(Test-Path -LiteralPath "$package/$variant/$name")) { throw "Missing Parakeet runtime: $variant/$name" }
-            }
-          }
+          if (Test-Path -LiteralPath "$package/engines") { throw 'App releases must reuse the separate runtime, not bundle engines.' }
           New-Item -ItemType Directory -Path "$package/asr"
           Copy-Item -LiteralPath asr/worker.py -Destination "$package/asr"
           Copy-Item -LiteralPath TalkToMe.cmd, setup.ps1, requirements.txt, settings.example.json, README.md, LICENSE -Destination $package
@@ -134,3 +110,4 @@ jobs:
           name: TalkToMe-Windows-x64
           path: build/TalkToMe-Windows-x64.zip
           if-no-files-found: error
+          retention-days: 3

@@ -1,0 +1,59 @@
+{
+  "version": "windows-33c84907041fb8a1",
+  "packages": {
+    "cpu": {
+      "name": "TalkToMe-engines-windows-x64-cpu.zip",
+      "size": 12995465,
+      "digest": "b8b16dd7bdcd4818c24a056511549406bd95ca1ded13eb2ec3d40fa81c65c339",
+      "files": {
+        "avx2/llama-server.exe": 9266176,
+        "avx2/NeMo-ggml-LICENSE.txt": 1099,
+        "avx2/NeMo-Speech-LICENSE.txt": 12454,
+        "avx2/NeMo-Speech-NOTICE.txt": 239,
+        "avx2/NeMo-Speech-THIRD_PARTY_NOTICES.md.txt": 16003,
+        "avx2/nemo_speech_asr.dll": 5924352,
+        "avx2/nemo_speech_asr_c.dll": 168960,
+        "avx2/SentencePiece-LICENSE.txt": 11560,
+        "avx2/TalkToMeParakeetHost.exe": 363520,
+        "avx2/TalkToMeSpeechHost.exe": 1941504,
+        "llama-server.exe": 9129472,
+        "llama.cpp-LICENSE.txt": 1099,
+        "ModelNotices.txt": 1063,
+        "NeMo-ggml-LICENSE.txt": 1099,
+        "NeMo-Speech-LICENSE.txt": 12454,
+        "NeMo-Speech-NOTICE.txt": 239,
+        "NeMo-Speech-THIRD_PARTY_NOTICES.md.txt": 16003,
+        "nemo_speech_asr.dll": 5817344,
+        "nemo_speech_asr_c.dll": 168960,
+        "nlohmann-json-LICENSE.txt": 1075,
+        "SentencePiece-LICENSE.txt": 11560,
+        "TalkToMeParakeetHost.exe": 363520,
+        "TalkToMeSpeechHost.exe": 1928704,
+        "whisper.cpp-LICENSE.txt": 1099
+      },
+      "url": "https://github.com/SergeyMakeev/TalkToMe/releases/download/runtime-windows-33c84907041fb8a1/TalkToMe-engines-windows-x64-cpu.zip"
+    },
+    "cuda": {
+      "name": "TalkToMe-engines-windows-x64-cuda.zip",
+      "size": 679436307,
+      "digest": "4126c74ea4cfbb8093aa938497c651c9ef022f925f09461f9d693e6f8ca47e9d",
+      "files": {
+        "cublas64_13.dll": 50288240,
+        "cublasLt64_13.dll": 477896816,
+        "CUDA-EULA.txt": 69587,
+        "cudart64_13.dll": 470640,
+        "llama-server.exe": 109775360,
+        "NeMo-ggml-LICENSE.txt": 1099,
+        "NeMo-Speech-LICENSE.txt": 12454,
+        "NeMo-Speech-NOTICE.txt": 239,
+        "NeMo-Speech-THIRD_PARTY_NOTICES.md.txt": 16003,
+        "nemo_speech_asr.dll": 114342400,
+        "nemo_speech_asr_c.dll": 163840,
+        "SentencePiece-LICENSE.txt": 11560,
+        "TalkToMeParakeetHost.exe": 357376,
+        "TalkToMeSpeechHost.exe": 102483968
+      },
+      "url": "https://github.com/SergeyMakeev/TalkToMe/releases/download/runtime-windows-33c84907041fb8a1/TalkToMe-engines-windows-x64-cuda.zip"
+    }
+  }
+}

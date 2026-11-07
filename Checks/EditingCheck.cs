@@ -20,6 +20,17 @@ internal static class EditingCheck
     }
     internal static void Check()
     {
+        const string codeSample = "`x—y`\n```text\n- keep this.\n```\n🙂";
+        Assert(DictationStyle.Apply(codeSample, codeSample) == codeSample, "code whitespace, punctuation and emoji preserved");
+        const string emojiSample = "Hi 👩🏽‍💻 🇺🇸 1️⃣ 🙂 `literal🙂` __EMOJI_0__";
+        var protectedEmoji = DictationStyle.Protect(emojiSample);
+        Assert(DictationStyle.Restore(emojiSample, protectedEmoji.Text) == emojiSample && protectedEmoji.Map.Count == 4, "emoji clusters, code and placeholder collisions");
+        Assert(DictationStyle.Restore("🙂", "__EMOJI_0__") == "🙂", "bare emoji placeholder");
+        try { DictationStyle.Restore("🙂", "__EMOJI_0__ __EMOJI_0__"); throw new Exception("Duplicate emoji accepted"); }
+        catch (InvalidDataException) { }
+        Assert(DictationStyle.Apply("", "It’s fine—really.\n1. Fix it.\n- Test it.") == "It's fine-really.\n1. Fix it\n- Test it", "ASCII prose and list punctuation");
+        try { DictationStyle.Apply("`foo()`", "`bar()`"); throw new Exception("Changed code accepted"); }
+        catch (InvalidDataException) { }
         foreach (var item in Cases("EditingResponses").EnumerateArray())
         {
             var message = new Dictionary<string, object> { ["content"] = item.GetProperty("content") };
@@ -38,7 +49,7 @@ internal static class EditingCheck
             settings.Validate();
             Assert(settings.RequiredModels().Contains(model) && ModelDownload.Get(model).Size > 0, "selectable model " + model);
             var body = JsonSerializer.SerializeToElement(EnglishEditor.RequestBody("Проверка", settings, model));
-            Assert(body.GetProperty("messages").GetArrayLength() == (model == "qwen08" ? 2 : 6), "examples " + model);
+            Assert(body.GetProperty("messages").GetArrayLength() == (model == "qwen08" ? 2 : 8), "examples " + model);
             Assert(body.GetProperty("response_format").GetProperty("type").GetString() == "json_schema", "constrained format " + model);
             settings.Prompt = "Custom instructions.";
             body = JsonSerializer.SerializeToElement(EnglishEditor.RequestBody("Test", settings, model));

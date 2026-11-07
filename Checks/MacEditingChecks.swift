@@ -9,6 +9,20 @@ private func editingFixture(_ name: String) throws -> [[String: Any]] {
 }
 
 func checkEditingResponses() throws {
+    let codeSample = "`x—y`\n```text\n- keep this.\n```\n🙂"
+    let emojiSample = "Hi 👩🏽‍💻 🇺🇸 1️⃣ 🙂 `literal🙂` __EMOJI_0__"
+    let protectedEmoji = DictationStyle.protect(emojiSample)
+    guard try DictationStyle.restore(emojiSample, protectedEmoji.text) == emojiSample,
+          protectedEmoji.map.count == 4,
+          try DictationStyle.restore("🙂", "__EMOJI_0__") == "🙂",
+          (try? DictationStyle.restore("🙂", "__EMOJI_0__ __EMOJI_0__")) == nil else {
+        throw Failure("Emoji clusters or placeholders were not preserved.")
+    }
+    guard try DictationStyle.apply(codeSample, codeSample) == codeSample,
+          try DictationStyle.apply("", "It’s fine—really.\n1. Fix it.\n- Test it.") == "It's fine-really.\n1. Fix it\n- Test it",
+          (try? DictationStyle.apply("`foo()`", "`bar()`")) == nil else {
+        throw Failure("Engineering style or code preservation check failed.")
+    }
     for item in try editingFixture("EditingResponses") {
         var message: [String: Any] = ["content": item["content"]!]
         for key in ["reasoning_content", "tool_calls", "refusal"] { message[key] = item[key] }
@@ -31,7 +45,7 @@ func checkEditingResponses() throws {
             throw Failure("Local editing format or model missing.")
         }
         let messages = request["messages"] as! [[String: String]]
-        guard messages.count == (model == .qwen08 ? 2 : 6) else { throw Failure("Editing examples missing.") }
+        guard messages.count == (model == .qwen08 ? 2 : 8) else { throw Failure("Editing examples missing.") }
         p.prompt = "Custom instructions."
         guard (try EnglishEditor.requestBody("Test", p)["messages"] as! [[String: String]]).count == 2 else {
             throw Failure("Examples override a custom prompt.")

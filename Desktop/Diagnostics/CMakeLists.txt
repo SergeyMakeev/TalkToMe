@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.26)
+project(TalkToMeDiagnostics LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded)
+add_executable(TalkToMe.CrashMonitor CrashMonitor.cpp)
+target_compile_definitions(TalkToMe.CrashMonitor PRIVATE UNICODE _UNICODE)
+target_link_libraries(TalkToMe.CrashMonitor PRIVATE dbghelp)

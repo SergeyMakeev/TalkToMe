@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace TalkToMe;
 
-internal sealed record ModelDownload(string Name, string Repository, string Revision, long Size, string Digest)
+internal sealed record ModelDownload(string Name, string Repository, string Revision, long Size, string Digest, string? Url = null)
 {
     private static readonly HttpClient Client = new() { Timeout = TimeSpan.FromHours(2) };
     private static readonly Dictionary<string, ModelDownload> Catalog = LoadCatalog();
@@ -49,7 +49,7 @@ internal sealed record ModelDownload(string Name, string Repository, string Revi
         try
         {
             progress.Report($"Downloading {Name}…");
-            var url = $"https://huggingface.co/{Repository}/resolve/{Revision}/{Name}";
+            var url = Url ?? $"https://huggingface.co/{Repository}/resolve/{Revision}/{Name}";
             using var response = await (client ?? Client).GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
             using var source = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);

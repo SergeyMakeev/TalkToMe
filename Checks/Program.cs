@@ -14,6 +14,12 @@ internal static class Program
     {
         Console.InputEncoding = new UTF8Encoding(false);
         Console.OutputEncoding = new UTF8Encoding(false);
+        if (args is ["--crash-child", var crashDirectory]) { DiagnosticsCheck.Child(crashDirectory); return 1; }
+        if (args is ["--crash-check"])
+        {
+            try { DiagnosticsCheck.Run().GetAwaiter().GetResult(); return 0; }
+            catch (Exception error) { Console.Error.WriteLine(error); return 1; }
+        }
         if (args is ["--clipboard"])
         {
             try { CheckClipboard(); return 0; }
@@ -21,6 +27,11 @@ internal static class Program
         }
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
+        if (args is ["--capture-check"])
+        {
+            try { CaptureLifecycleCheck.Run(); return 0; }
+            catch (Exception error) { Console.Error.WriteLine(error); return 1; }
+        }
         if (args is ["--translation-check", var modelDir, var modelId])
         {
             try { EditingCheck.RunModels(modelDir, modelId).GetAwaiter().GetResult(); return 0; }
@@ -63,6 +74,7 @@ internal static class Program
             Assert(Shortcut.Parse($"Ctrl+{digit}") == new Shortcut(2, Keys.D0 + digit), "top-row shortcut");
         }
         CheckDownload().GetAwaiter().GetResult();
+        EngineInstallCheck.Run().GetAwaiter().GetResult();
         CheckSettings();
         PerformanceCheck.Check();
         EditingCheck.Check();
@@ -217,8 +229,8 @@ internal static class Program
         using var pcm = new MemoryStream();
         wav.CopyTo(pcm);
         using var recognizer = new Recognizer(settings);
-        var metrics = new ProcessingMetrics(settings, pcm.Length / 32000d, "en");
-        string text = await recognizer.RunAsync(pcm.ToArray(), "en", token, metrics).ConfigureAwait(false);
+        var metrics = new ProcessingMetrics(settings, pcm.Length / 32000d, "auto");
+        string text = await recognizer.RunAsync(pcm.ToArray(), "auto", token, metrics).ConfigureAwait(false);
         Console.WriteLine(text);
         Assert(text.Contains("country", StringComparison.OrdinalIgnoreCase), "bundled speech JFK sample");
         using var translator = new EnglishEditor(settings);

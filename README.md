@@ -67,7 +67,7 @@ The panel offers **Auto**, **Russian**, and **English** input and a **Press to t
 
 ## Install on Windows
 
-1. Extract the entire **TalkToMe-Windows-x64.zip** and double-click **TalkToMe.exe**. Keep the **engines** folder beside it. The build includes the .NET runtime and both inference engines.
+1. Extract **TalkToMe-Windows-x64.zip** and double-click **TalkToMe.exe**. .NET and the crash monitor are included. Speech and editing engines download automatically to a shared cache.
 2. In the first-run **Models** screen, choose how to listen and what to insert. Select **Download and save**. The app shows the download size and verifies each file before using it. Enable microphone access for desktop apps in Windows if prompted.
 3. When the panel says **Ready**, focus a text field, hold **Ctrl + Numpad 0**, speak, and release.
 
@@ -87,9 +87,11 @@ The panel offers **Auto**, **Russian**, and **English** input and a **Press to t
 
 You can cancel setup and open **Settings → Models** again. Completed downloads are reused. **Verify downloaded models** checks the installed files against the catalog and replaces damaged files. Audio stays on your computer. [Whisper models](https://huggingface.co/ggerganov/whisper.cpp) · [Qwen 0.8B](https://huggingface.co/ggml-org/Qwen3.5-0.8B-GGUF) · [Qwen 2B](https://huggingface.co/unsloth/Qwen3.5-2B-GGUF) · [Qwen 4B](https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF)
 
-For fast Russian speech, try **Whisper Large v3 Turbo** and set **Dictation → Spoken language → Russian** when speaking mainly Russian. Keep Auto for sessions that switch languages. If the source transcript is wrong, changing the translator cannot reliably recover the missing words. For better English output on an M2 Max, try **Qwen 4B Instruct**; **Qwen 2B** uses a smaller download. Both run with the existing bundled runtime and Metal support.
+For fast Russian speech, try **Whisper Large v3 Turbo** and set **Dictation → Spoken language → Russian** when speaking mainly Russian. The default **English / Russian** mode restricts Whisper's language detection to these two languages and supplies software engineering vocabulary. If the source transcript is wrong, changing the translator cannot reliably recover the missing words. Qwen 2B and 4B use the same local engine and support Metal on Apple silicon.
 
-The 0.8B model produced omissions, untranslated text and explanatory prose in local checks. The 2B and 4B models passed six focused regression cases covering counting with an unrelated glossary, questions, spoken corrections, mixed technical dictation, quoted commands, and negation/numbers. These checks are not a broad translation benchmark, and formatting checks cannot detect every mistranslation. [Test inputs](Checks/TranslationCases.json)
+The default editing instructions produce natural US English for software engineering discussions, preserve tone and technical details, and apply spoken self-corrections. Existing backticked code is checked before insertion. Emoji placeholders are restored exactly; prose uses ASCII punctuation and list items have no trailing periods. Custom prompts remain unchanged; choose **Editing → Restore default instructions** to adopt these rules if you saved your own prompt.
+
+The 0.8B model produced omissions, untranslated text and explanatory prose in local checks. The 2B and 4B checks cover counting, questions, corrections, technical dictation, commands as data, negation/numbers, code, emojis and lists. These are focused regression cases, not a broad translation benchmark; formatting checks cannot detect every mistranslation. [Test inputs](Checks/TranslationCases.json)
 
 **Parakeet TDT v3** uses the bundled [NeMo-Speech.cpp](https://github.com/NVIDIA/NeMo-Speech.cpp) runtime and NVIDIA's Q8_0 model. It loads once and stays ready between recordings. Windows uses bundled CUDA when available, and Apple silicon uses Metal when enabled. A failed GPU load or inference retries on CPU; Intel Macs use CPU. Parakeet detects the spoken language itself. It does not use Whisper's speech detector or glossary prompt.
 
@@ -102,17 +104,23 @@ Both models download and verify inside Settings and run offline afterward. No Py
 
 Existing preferences keep their configured Python/CUDA speech engine and server. You can switch either one in **Models**. For a new manual faster-whisper environment, `setup.ps1` (or `setup.ps1 -Cpu`) is still available and requires x64 Python 3.11 with the Windows `py` launcher. [faster-whisper runtime requirements](https://github.com/SYSTRAN/faster-whisper#requirements)
 
-To build the bundled path from source, install the .NET 8 SDK, Git, CMake 3.26+, Visual Studio 2022 C++ x64 build tools, CUDA Toolkit 13.0 and Python 3.10+. From the repository root run `py -3 Shared/build_engines.py build/engines --cuda`, then `dotnet publish Desktop/TalkToMe.csproj -c Release -r win-x64 --self-contained true -o build/app`. CUDA is a build dependency only. For CPU-only development, omit `--cuda` and use `dotnet build Desktop` instead of publishing. Open **TalkToMe.cmd**.
+To build the Windows app, install the .NET 8 SDK, CMake 3.26+ and Visual Studio C++ x64 build tools. Run `cmake -S Desktop/Diagnostics -B build/diagnostics -A x64`, `cmake --build build/diagnostics --config Release`, then `dotnet publish Desktop/TalkToMe.csproj -c Release -r win-x64 --self-contained true -o build/app`. The app downloads its pinned runtime automatically.
+
+Only native-engine developers need Python and CUDA Toolkit 13.0. Build with `py -3 Shared/build_engines.py build/engines --cuda`; set `TALKTOME_ENGINE_DIRECTORY` to that absolute directory for local testing. `py -3 Shared/package_windows_runtime.py` creates immutable runtime assets and their pinned manifest. See [runtime publishing](.github/workflows/README.md).
 
 ### Windows performance and diagnostics
 
 Windows automatically uses the bundled CUDA engines on a compatible NVIDIA GPU. The runtime includes kernels for RTX 20, 30, 40 and 50 series GPUs, including Blackwell RTX 5070. Users need their NVIDIA graphics driver, but do not need Python, the CUDA toolkit, a separate server, or a runtime installer. NVIDIA driver compatibility is checked by launching a private GPU probe. Older drivers, unsupported GPUs and computers without NVIDIA graphics use the CPU automatically. AMD and Intel GPU acceleration is not included in the Windows build. macOS continues to use its bundled Metal backend.
 
-Under **Settings → Models**, **Use NVIDIA GPU when available** is enabled by default. Turn it off to compare CPU performance. The app selects optimized AVX2/FMA CPU engines when supported, with portable engines for older CPUs. Keep the entire `engines` folder, including `avx2` and `cuda`, beside the executable. The v0.2.0 release only contains the slower portable CPU engines.
+Under **Settings → Models**, **Use NVIDIA GPU when available** is enabled by default. Turn it off to compare CPU performance. The app downloads about 13 MB of CPU engines and, on compatible NVIDIA systems, about 679 MB of CUDA engines. It verifies SHA-256 checksums and extracts them under `%LOCALAPPDATA%\TalkToMe\engines\<runtime-version>`. App updates reuse this cache, including offline. No engines folder is required beside the executable. After confirming an upgrade works, you can remove an old installation's bundled `engines` folder. Interrupted downloads do not become usable installations; a failed CUDA download falls back to CPU and retries after restart.
 
 Speech and translation run in separate private helper processes. If a CUDA engine fails to load or stops during inference, the app stops that helper and retries the pending work once on CPU. That engine stays on CPU until its settings change or the app restarts. Cancellation stops the requested speech work without disabling GPU eligibility. Custom Python engines and user-managed translation servers keep their existing behavior.
 
 After processing, the main window shows speech, translation and total time. Open **Performance…** to see and copy the last 20 attempts, including retries and failures. Reports show the actual speech and translation backends, GPU device name, translation layers offloaded, and any CPU fallback reason. Reports contain model choices, CPU information, audio duration and timing, but no audio, transcript, prompt, credentials or server address. They stay in memory until the app quits. Timings include failed GPU attempts when a CPU retry was needed.
+
+**Copy debug report** in the main window or **Settings → Diagnostics** also includes persistent recent events, version and runtime information, model selections and saved crash callstacks. Use it after restarting from a crash. **Open diagnostics folder** opens `%LOCALAPPDATA%\TalkToMe\Diagnostics`: `events.log` contains stages and managed exception stacks; `crash-*.txt` and `.dmp` contain native crash information. The small bundled crash monitor captures second-chance failures from a separate process without administrator rights or system registry changes. If attachment is blocked, `monitor.txt` records the reason. Normal exit, forced process termination, and machine power loss do not produce a crash dump.
+
+Text reports exclude transcripts, audio, prompt/glossary contents, API keys and exception messages. Dumps can contain process memory, so inspect them before sharing; nothing uploads automatically. Logs rotate at 2 MB, and startup retains at most three dumps within a 512 MB budget. Open a dump in WinDbg and use `!analyze -v` for native analysis; the text report provides managed exception stacks even without a debugger. Older releases did not save app-managed crash reports; Windows Event Viewer → Windows Logs → Application may still contain their faulting module and exception code.
 
 | Timing | What it measures |
 |---|---|
@@ -128,7 +136,7 @@ All durations are milliseconds. Total excludes recording time and ends when text
 
 For reproducible developer measurements, build `Checks` and run `dotnet run --project Checks -c Release --no-build -- --benchmark build/model-check build/native-src/whisper.cpp/samples/jfk.wav`. It requires models installed by the `--local-models` check. The benchmark runs once cold and three times warm with 16 kHz mono PCM16 audio and changing Russian translation requests. Append `cpu` to disable CUDA or `portable` to compare the compatibility engines. Compare warm runs on the same machine without other inference or builds running. `TALKTOME_CPU=portable` also forces compatibility engines for troubleshooting.
 
-On a machine with an NVIDIA GPU, run `dotnet run --project Checks -c Release --no-build -- --gpu-check build/model-check build/native-src/whisper.cpp/samples/jfk.wav` to check real CUDA inference, recovery after terminating the test helpers, GPU startup failure and cancellation. It only terminates helpers started by that check. The Windows CI also tests automatic CPU fallback with CUDA devices hidden and verifies that the archive includes the GPU runtime and its license.
+On a machine with an NVIDIA GPU, run `dotnet run --project Checks -c Release --no-build -- --gpu-check build/model-check build/native-src/whisper.cpp/samples/jfk.wav` to check real CUDA inference, recovery after terminating the test helpers, GPU startup failure and cancellation. It only terminates helpers started by that check. `--crash-check` verifies a dump and callstacks from a disposable process; `--capture-check` simulates microphone removal and sound failures on hotkey release. The Windows CI downloads the pinned CPU runtime and tests inference, archive integrity, cancellation, offline reuse and recovery.
 
 To use an existing llama-server, select **Use my own server** in **Models**. Open **Server**, enter its URL (for example, `http://my-gpu-host:8080/v1`), model alias and optional API key. The client calls `POST /v1/chat/completions`.
 
@@ -171,7 +179,7 @@ A missing model, disconnected server, or failed generation leaves available audi
 
 ## Verification
 
-GitHub Actions builds the Windows app with both native engines, runs the settings checks, downloads the default models and tests CPU transcription and local translation. Each successful run uploads the published desktop binaries as **TalkToMe-Windows**.
+GitHub Actions builds the small Windows app and crash monitor, downloads the pinned shared runtime and default models, and checks CPU transcription, editing and failure recovery. Native engines have a separate, manually dispatched build workflow and are reused across app releases. Temporary Windows build artifacts expire after three days.
 
 The macOS workflow builds and verifies the app bundle separately on Apple silicon and Intel. It checks preference persistence and shortcut migration, insertion policy with simulated AX/keyboard responses, a llama-server-compatible HTTP exchange and CPU transcription of a bundled sample with Whisper and the speech detector. The insertion policy checks cover Unicode, permission failures, held modifiers, focus changes, cancellation and avoiding duplicate writes after a timeout. They do not grant CI control of the desktop; actual Accessibility permission and insertion into your own editors need a dictation test in TextEdit after first launch.
 

@@ -138,7 +138,7 @@ struct PreferencesView: View {
                         }
                     }
                     Picker("Spoken language", selection: $p.language) {
-                        Text("Automatic").tag("auto"); Text("English").tag("en"); Text("Russian").tag("ru")
+                        Text("English / Russian").tag("auto"); Text("English").tag("en"); Text("Russian").tag("ru")
                     }
                     LabeledContent("Recording shortcut") {
                         TextField("Recording shortcut", text: $p.shortcut).labelsHidden()

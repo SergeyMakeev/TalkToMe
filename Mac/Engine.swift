@@ -122,11 +122,12 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         // The tiny model tends to copy examples; larger models benefit from them.
         if p.translation.bundled && p.translation != .qwen08 && defaults,
            let examples = format["examples"] as? [[String: String]] { messages += examples }
-        let user = try JSONSerialization.data(withJSONObject: ["transcript": transcript, "glossary": p.glossary], options: [.sortedKeys])
+        let protectedInput = defaults ? DictationStyle.protect(transcript).text : transcript
+        let user = try JSONSerialization.data(withJSONObject: ["transcript": protectedInput, "glossary": p.glossary], options: [.sortedKeys])
         let prefix = defaults ? (format["user_prefix"] as? String ?? "") : ""
         messages.append(["role": "user", "content": prefix + String(decoding: user, as: UTF8.self)])
         var body: [String: Any] = ["model": p.model, "temperature": p.temperature, "stream": false,
-            "chat_template_kwargs": ["enable_thinking": false], "max_tokens": min(4096, max(160, transcript.utf16.count + 96)),
+            "chat_template_kwargs": ["enable_thinking": false], "max_tokens": min(4096, max(160, protectedInput.utf16.count + 96)),
             "messages": messages]
         if p.translation.bundled { body["response_format"] = format["response_format"] }
         return body
@@ -243,9 +244,13 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw Failure("llama-server returned HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0). Check the server URL, model and API key.")
         }
-        let text = try Self.completeText(data, structured: p.translation.bundled && p.translation != .translategemma, transcript: transcript)
+        let guardInput = p.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && p.translation != .translategemma ? DictationStyle.protect(transcript).text : transcript
+        let text = try Self.completeText(data, structured: p.translation.bundled && p.translation != .translategemma, transcript: guardInput)
         if p.translation == .translategemma && text.utf16.count > max(256, transcript.utf16.count * 4) {
             throw Failure("TranslateGemma expanded the dictation unexpectedly. Retry or copy the transcript.")
+        }
+        if p.translation != .translategemma && p.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return try DictationStyle.apply(transcript, DictationStyle.restore(transcript, text))
         }
         return text
     }

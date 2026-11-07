@@ -8,6 +8,7 @@
     <Nullable>enable</Nullable>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationIcon>Icons/TalkToMe.ico</ApplicationIcon>
+    <DebugType>embedded</DebugType>
   </PropertyGroup>
   <ItemGroup>
     <Using Include="System.IO" />
@@ -15,19 +16,16 @@
     <EmbeddedResource Include="../Shared/TranslateGemmaPrompt.txt" LogicalName="TalkToMe.TranslateGemmaPrompt.txt" />
     <EmbeddedResource Include="../Shared/LocalEditing.json" LogicalName="TalkToMe.LocalEditing.json" />
     <EmbeddedResource Include="../Shared/Models.json" LogicalName="TalkToMe.Models.json" />
+    <EmbeddedResource Include="../Shared/WindowsRuntime.json" LogicalName="TalkToMe.WindowsRuntime.json" />
     <Content Include="../Shared/GemmaTerms.txt;../Shared/GemmaNotice.txt;../Shared/ModelNotices.txt" Link="licenses/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
-    <Content Include="../build/engines/**/*" Exclude="../build/engines/**/TalkToMeSpeech.dll" Link="engines/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <Content Include="../build/diagnostics/Release/TalkToMe.CrashMonitor.exe" Link="TalkToMe.CrashMonitor.exe" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
     <EmbeddedResource Include="Sounds/*.wav" />
     <EmbeddedResource Include="Icons/*.ico" />
     <PackageReference Include="NAudio.WinMM" Version="2.2.1" />
     <InternalsVisibleTo Include="TalkToMe.Checks" />
   </ItemGroup>
-  <Target Name="CheckBundledEngines" BeforeTargets="PrepareForPublish" Condition="'$(SelfContained)' == 'true'">
-    <Error Condition="!Exists('../build/engines/TalkToMeParakeetHost.exe') Or !Exists('../build/engines/avx2/TalkToMeParakeetHost.exe') Or !Exists('../build/engines/cuda/TalkToMeParakeetHost.exe') Or !Exists('../build/engines/nemo_speech_asr_c.dll') Or !Exists('../build/engines/avx2/nemo_speech_asr_c.dll') Or !Exists('../build/engines/cuda/nemo_speech_asr_c.dll')"
-           Text="Build the bundled Parakeet engines before publishing." />
-    <Error Condition="!Exists('../build/engines/TalkToMeSpeechHost.exe') Or !Exists('../build/engines/llama-server.exe') Or !Exists('../build/engines/avx2/TalkToMeSpeechHost.exe') Or !Exists('../build/engines/avx2/llama-server.exe')"
-           Text="Build the native CPU engines before publishing. Run py -3 Shared/build_engines.py build/engines --cuda from the repository root." />
-    <Error Condition="!Exists('../build/engines/cuda/TalkToMeSpeechHost.exe') Or !Exists('../build/engines/cuda/llama-server.exe') Or !Exists('../build/engines/cuda/cudart64_13.dll') Or !Exists('../build/engines/cuda/cublas64_13.dll') Or !Exists('../build/engines/cuda/cublasLt64_13.dll') Or !Exists('../build/engines/cuda/CUDA-EULA.txt')"
-           Text="The bundled NVIDIA engines are missing. Install CUDA Toolkit 13.0 for the build, then run py -3 Shared/build_engines.py build/engines --cuda." />
+  <Target Name="CheckDiagnostics" BeforeTargets="PrepareForPublish" Condition="'$(SelfContained)' == 'true'">
+    <Error Condition="!Exists('../build/diagnostics/Release/TalkToMe.CrashMonitor.exe')"
+           Text="Build Desktop/Diagnostics with CMake before publishing." />
   </Target>
 </Project>

@@ -48,7 +48,7 @@ internal sealed class SettingsDialog : Form
             "TranslateGemma 4B · translation only · 2.49 GB", "Transcript only · keep the spoken language", "Use my own server"]);
         translation.SelectedIndex = Array.IndexOf(ids, settings.Translation);
         Row("Translate and edit with", translation);
-        Row("", new Label { AutoSize = true, MaximumSize = new(420, 0), Text = "For accuracy, try Whisper Large v3 Turbo and Qwen 2B or 4B. Qwen 0.8B can miss words and instructions." });
+        Row("", new Label { AutoSize = true, MaximumSize = new(420, 0), Text = "For accuracy, try Whisper Large v3 Turbo and Qwen 2B or 4B. Engines download once and are shared by app updates. CUDA downloads only on NVIDIA systems." });
         void SetModels(Settings s) {
             s.BundledSpeech = speech.SelectedIndex != 3;
             if (s.BundledSpeech) s.SpeechModel = speech.SelectedIndex == 0 ? "base" : speech.SelectedIndex == 2 ? "parakeet" : "speech";
@@ -145,6 +145,14 @@ internal sealed class SettingsDialog : Form
         collect.Add(s => { s.Prompt = prompt.Text.Trim().ReplaceLineEndings("\n") == EnglishEditor.Instruction.ReplaceLineEndings("\n") ? "" : prompt.Text.Trim();
             s.Glossary = glossary.Lines.Select(x => x.Trim()).Where(x => x.Length > 0).ToArray(); });
         Number("Temperature", (decimal)settings.Temperature, 0, 2, (s,v) => s.Temperature = (double)v, decimals: 2);
+        Page("Diagnostics");
+        Row("", new Label { AutoSize = true, MaximumSize = new(420, 0), Text = "Copy versions, model settings, recent events and saved crash callstacks. Transcripts, audio and API keys are excluded. Memory dumps remain local and may contain private data." });
+        var copyDebug = new Button { Text = "Copy debug report", AutoSize = true };
+        copyDebug.Click += (_, _) => { try { Clipboard.SetText(Diagnostics.Report(original)); feedback.Text = "Debug report copied."; } catch (Exception error) { feedback.Text = error.Message; } };
+        Row("", copyDebug);
+        var openDebug = new Button { Text = "Open diagnostics folder", AutoSize = true };
+        openDebug.Click += (_, _) => { try { Diagnostics.OpenFolder(); } catch (Exception error) { feedback.Text = error.Message; } };
+        Row("", openDebug);
         var speechPage = tabs.TabPages[2];
         var serverPage = tabs.TabPages[3];
         void ShowChoices()
@@ -255,6 +263,7 @@ internal sealed class SettingsDialog : Form
             install = cancel;
             tabs.Enabled = save.Enabled = false;
             var progress = new Progress<string>(s => { if (!IsDisposed && install == cancel) feedback.Text = s; });
+            await EngineInstall.EnsureAsync(draft, cancel.Token, progress);
             foreach (var model in draft.RequiredModels().Select(ModelDownload.Get))
                 if (verifyOnly || !model.Installed(draft.ModelDirectory))
                     await model.InstallAsync(draft.ModelDirectory, progress, cancel.Token);

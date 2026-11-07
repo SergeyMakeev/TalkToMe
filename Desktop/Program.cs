@@ -5,6 +5,7 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        Diagnostics.Initialize();
         ApplicationConfiguration.Initialize();
         using var instance = new Mutex(true, @"Local\TalkToMe.Dictation", out bool first);
         if (!first) { MessageBox.Show("TalkToMe is running. Open it from the notification area.", "TalkToMe"); return; }
@@ -23,7 +24,8 @@ internal static class Program
             using var window = new DictationWindow(settings);
             Application.Run(window);
         }
-        catch (Exception error) { MessageBox.Show(error.Message, "TalkToMe", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        catch (Exception error) { Diagnostics.Error("startup failed", error); MessageBox.Show(error.Message, "TalkToMe", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        finally { Diagnostics.Event("exit", "Normal exit"); }
     }
 
     private static string FindInstallation()
