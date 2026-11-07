@@ -67,6 +67,7 @@ final class SpeechEngine {
             throw Failure("Open Settings → Models to download speech models, or choose your files in Speech.")
         }
         if model == nil || path != p.whisper || metal != p.useMetal {
+            Diagnostics.event("speech.load", "Whisper; Metal requested=\(p.useMetal)")
             if let model { ttm_close(model) }
             model = ttm_open(p.whisper, p.useMetal)
             path = p.whisper
@@ -164,6 +165,7 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         try process.run()
+        Diagnostics.event("editor.started", "PID=\(process.processIdentifier); bundled=\(p.translation.bundled); Metal requested=\(p.useMetal)")
         owned = process
     }
     private func prepare(_ p: Preferences, _ base: URL, key: String) async throws {
@@ -175,6 +177,7 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         while Date() < deadline {
             try Task.checkCancellation()
             if let owned, !owned.isRunning {
+                Diagnostics.event("editor.exited", "PID=\(owned.processIdentifier); reason=\(owned.terminationReason.rawValue); status=\(owned.terminationStatus)")
                 stop()
                 throw Failure("Local translation stopped. Check available memory and retry.")
             }
@@ -232,7 +235,9 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         }
         let endpoint = try p.endpoint()
         let key = try p.translation.bundled ? privateKey : Secrets.read(p.keyAccount)
+        let preparation = ProcessInfo.processInfo.systemUptime
         try await prepare(p, endpoint, key: key)
+        Diagnostics.timing("editor_ready", since: preparation)
         try Task.checkCancellation()
         var request = URLRequest(url: endpoint.appendingPathComponent("chat/completions"), timeoutInterval: TimeInterval(p.timeout))
         request.httpMethod = "POST"
@@ -240,7 +245,9 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         if !key.isEmpty { request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization") }
         request.httpBody = try JSONSerialization.data(withJSONObject: Self.requestBody(transcript, p))
         let client = p.translation.bundled ? loopback : session
+        let requested = ProcessInfo.processInfo.systemUptime
         let (data, response) = try await client.data(for: request)
+        Diagnostics.timing("editor_request", since: requested)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw Failure("llama-server returned HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0). Check the server URL, model and API key.")
         }

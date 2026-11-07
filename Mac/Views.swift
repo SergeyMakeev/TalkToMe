@@ -33,6 +33,7 @@ struct Panel: View {
                 Button("Retry processing") { app.retry() }.disabled(!app.canRetry)
                 Button("Cancel") { app.cancel() }.disabled(app.phase == .idle)
             }
+            Button("Copy debug report") { app.copyDebugReport() }
         }.padding(20).frame(minWidth: 540, minHeight: 360)
         .sheet(isPresented: $app.settingsOpen) { PreferencesView(app: app, preferences: app.prefs) }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in app.refreshPermissions() }
@@ -218,6 +219,15 @@ struct PreferencesView: View {
                     TextEditor(text: $glossary).border(Color.secondary.opacity(0.3))
                     LabeledContent("Temperature · \(p.temperature, specifier: "%.2f")") { Slider(value: $p.temperature, in: 0...2, step: 0.01) }
                 }.padding().tabItem { Text("Editing") }
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Debug information").font(.headline)
+                    Text("Copy versions, model selections, permission status, recent processing timings and available macOS crash backtraces. You can reopen TalkToMe after a crash and copy the report here.")
+                    Button("Copy debug report") { app.copyDebugReport(); feedback = "Debug report copied." }
+                    Button("Open diagnostics folder") { Diagnostics.openFolder() }
+                    Button("Open macOS crash reports") { Diagnostics.openCrashReports() }
+                    Text("Reports exclude dictation, audio, prompts and credentials. Original macOS crash files may include additional private information; they are never uploaded automatically.").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                }.padding().tabItem { Text("Diagnostics") }
             }.formStyle(.grouped).disabled(download != nil)
             HStack {
                 if download != nil { ProgressView().controlSize(.small) }

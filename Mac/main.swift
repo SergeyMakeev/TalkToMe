@@ -117,6 +117,7 @@ import AVFoundation
         return .terminateLater
     }
     func applicationWillTerminate(_ notification: Notification) {
+        Diagnostics.cleanExit()
         if let board = quitPasteboardCheck {
             guard board.string(forType: .string) == "Clipboard before Quit" else {
                 fputs("Quit did not restore its pending pasteboard.\n", stderr); exit(1)
@@ -131,7 +132,12 @@ import AVFoundation
 }
 
 let args = CommandLine.arguments
-if args.count == 2 && args[1] == "--check-access-reset" {
+if args.count == 2 && args[1] == "--check-diagnostics" {
+    MainActor.assumeIsolated {
+        do { try checkDiagnostics(); print("Mac diagnostic persistence, crash parsing and privacy checks passed.") }
+        catch { fputs("\(error)\n", stderr); exit(1) }
+    }
+} else if args.count == 2 && args[1] == "--check-access-reset" {
     Task { @MainActor in
         do {
             try await AccessibilityAccess.resetApproval()
@@ -266,6 +272,7 @@ if args.count == 2 && args[1] == "--check-access-reset" {
     } catch { fputs("\(error.localizedDescription)\n", stderr); exit(1) }
 } else {
     MainActor.assumeIsolated {
+        Diagnostics.initialize()
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.setActivationPolicy(.regular)

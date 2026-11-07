@@ -15,6 +15,7 @@ internal static class Program
         Console.InputEncoding = new UTF8Encoding(false);
         Console.OutputEncoding = new UTF8Encoding(false);
         if (args is ["--crash-child", var crashDirectory]) { DiagnosticsCheck.Child(crashDirectory); return 1; }
+        if (args is ["--exit-child", var exitDirectory]) { DiagnosticsCheck.Child(exitDirectory, terminate: true); return 1; }
         if (args is ["--crash-check"])
         {
             try { DiagnosticsCheck.Run().GetAwaiter().GetResult(); return 0; }

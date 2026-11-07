@@ -320,8 +320,12 @@ internal sealed class DictationWindow : Form
         try
         {
             Diagnostics.Event("recording.start", $"Speech={settings.SpeechModel}; editor={settings.Translation}; GPU={settings.UseGpu}; input={settings.Microphone}");
+            Diagnostics.Event("target.capture.start");
             s.Target = settings.CopyOnly ? null : Destination.Capture();
+            Diagnostics.Event("target.capture.finished", s.Target == null ? "No insertion target" : "Target captured");
+            Diagnostics.Event("microphone.open");
             capture = openMicrophone(settings.Microphone);
+            Diagnostics.Event("microphone.start");
             capture.Start();
             current = s; dispatched = false;
             original.Clear(); english.Clear(); microphone = capture;
@@ -330,6 +334,7 @@ internal sealed class DictationWindow : Form
             var hint = settings.Toggle ? "Press shortcut to finish" : "Release to finish";
             SetStatus("Recording. " + hint + (cancelRegistered ? $". {settings.CancelShortcut} cancels." : "."),
                 "Recording  ·  " + hint);
+            Diagnostics.Event("recording.ready");
             byte[] pcm;
             try { pcm = await capture.Completion.WaitAsync(s.Cancel.Token); }
             finally { RecordingEnded(capture); }

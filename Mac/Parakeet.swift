@@ -85,6 +85,7 @@ final class ParakeetWorker {
                         throw Failure("Parakeet could not start its selected backend.")
                     }
                     backend = gpu ? "Metal" : cpuFallback ? "CPU (Metal fallback)" : "CPU"
+                    Diagnostics.event("speech.backend", "Parakeet: " + backend)
                 } else if let worker = process {
                     job.onCancel { if worker.isRunning { kill(worker.processIdentifier, SIGKILL) } }
                 }

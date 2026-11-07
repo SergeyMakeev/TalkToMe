@@ -40,7 +40,7 @@ internal static class Diagnostics
         info.ArgumentList.Add(Environment.ProcessId.ToString());
         info.ArgumentList.Add(DirectoryPath); info.ArgumentList.Add(eventName);
         using var monitor = Process.Start(info);
-        Event("monitor", ready.WaitOne(5000) ? "Crash monitor started; attachment failures are in monitor.txt." : "Crash monitor startup timed out.");
+        Event("monitor", ready.WaitOne(5000) ? "Crash monitor started; per-session status and exit codes are in monitor-*.txt." : "Crash monitor startup timed out.");
     }
     internal static void Event(string stage, string detail = "")
     {
@@ -83,8 +83,12 @@ internal static class Diagnostics
             if (File.Exists(path)) { report.AppendLine("\n--- " + name + " ---"); report.AppendLine(string.Join('\n', File.ReadLines(path).TakeLast(500))); }
         }
         if (Directory.Exists(DirectoryPath))
+        {
+            foreach (var file in new DirectoryInfo(DirectoryPath).GetFiles("monitor-*.txt").OrderByDescending(f => f.LastWriteTimeUtc).Take(8))
+            { report.AppendLine("\n--- " + file.Name + " ---"); report.AppendLine(File.ReadAllText(file.FullName)); }
             foreach (var file in new DirectoryInfo(DirectoryPath).GetFiles("crash-*.txt").OrderByDescending(f => f.LastWriteTimeUtc).Take(3))
             { report.AppendLine("\n--- " + file.Name + " ---"); report.AppendLine(File.ReadAllText(file.FullName)); }
+        }
         return report.ToString();
     }
     internal static void OpenFolder()
@@ -94,6 +98,8 @@ internal static class Diagnostics
     }
     private static void Prune()
     {
+        foreach (var old in new DirectoryInfo(DirectoryPath).GetFiles("monitor-*.txt").OrderByDescending(f => f.LastWriteTimeUtc).Skip(8))
+            old.Delete();
         var dumps = new DirectoryInfo(DirectoryPath).GetFiles("crash-*.dmp").OrderByDescending(f => f.LastWriteTimeUtc).ToArray();
         long bytes = 0;
         for (int i = 0; i < dumps.Length; i++)

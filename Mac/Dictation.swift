@@ -35,8 +35,8 @@ import AVFoundation
     var canRetry: Bool { phase == .idle && !audio.isEmpty }
     init() {
         do { prefs = try Preferences.load(); try prefs.validate() }
-        catch { status = error.localizedDescription }
-        do { try keys.setRecord(prefs.shortcut) } catch { status = error.localizedDescription }
+        catch { Diagnostics.error("settings.load", error); status = error.localizedDescription }
+        do { try keys.setRecord(prefs.shortcut) } catch { Diagnostics.error("hotkey.register", error); status = error.localizedDescription }
         keys.action = { [weak self] id, down in self?.handleKey(id, down) }
         observer = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
             object: nil, queue: .main) { [weak self] notification in
@@ -105,11 +105,14 @@ import AVFoundation
         if !closing, prefs.sounds, let tone = tones[index] { tone.stop(); tone.play() }
     }
     private func start() {
+        Diagnostics.event("recording.start", "Speech=\(Diagnostics.model(prefs)); editor=\(prefs.translation.rawValue); Metal requested=\(prefs.useMetal)")
         let capture = Capture()
         let id = UUID()
         refreshPermissions()
         let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        Diagnostics.event("target.capture.start")
         let destination = prefs.review ? nil : Destination.capture()
+        Diagnostics.event("target.capture.finished")
         let recovery = destination.flatMap { result -> FocusRecovery<Destination>? in
             guard case .failure = result, let pid else { return nil }
             return Destination.recovery(for: pid)
@@ -117,9 +120,11 @@ import AVFoundation
         do {
             try prefs.validate()
             try keys.enableCancel(prefs.cancelShortcut)
+            Diagnostics.event("microphone.start")
             try capture.start(deviceID: prefs.microphone, minutes: prefs.minutes) { [weak self] in
                 guard let self, self.revision == id, self.phase == .recording else { return }
                 self.cancel()
+                Diagnostics.event("microphone.disconnected")
                 self.status = "Microphone disconnected. Check the input in Settings."
             }
             revision = id
@@ -139,10 +144,12 @@ import AVFoundation
             phase = .recording
             status = "Recording · \(prefs.toggle ? "Press the shortcut again" : "Release the shortcut") to finish."
             cue(0)
+            Diagnostics.event("recording.ready")
             timer = Timer.scheduledTimer(withTimeInterval: Double(prefs.minutes * 60), repeats: false) { [weak self] _ in
                 Task { @MainActor in if self?.revision == id { self?.finish() } }
             }
         } catch {
+            Diagnostics.error("recording.failed", error)
             keys.disableCancel()
             status = error.localizedDescription
             refreshMenu?()
@@ -157,10 +164,15 @@ import AVFoundation
     }
     func finish() {
         guard phase == .recording else { return }
+        Diagnostics.event("recording.stop")
+        let started = ProcessInfo.processInfo.systemUptime
         do {
             audio = try stopMicrophone()
+            Diagnostics.timing("audio_finalize", since: started)
+            Diagnostics.event("audio.ready", String(format: "%.2f seconds", Double(audio.count) / 16000))
             process(insert: true)
         } catch {
+            Diagnostics.error("recording.stop.failed", error)
             clearTarget()
             keys.disableCancel()
             phase = .idle
@@ -181,19 +193,27 @@ import AVFoundation
         let p = prefs
         let lookup = targetLookup
         task = Task {
+            let started = ProcessInfo.processInfo.systemUptime
             defer {
+                Diagnostics.timing("processing_total", since: started)
                 if revision == id { keys.disableCancel(); clearTarget(); phase = .idle; task = nil; job = nil }
             }
             do {
                 if source.isEmpty || p.language != language {
                     status = "Transcribing speech…"
+                    Diagnostics.event("speech.start")
+                    let speechStart = ProcessInfo.processInfo.systemUptime
                     let result = try await speech.recognize(audio, p, work)
+                    Diagnostics.timing("speech", since: speechStart)
                     try Task.checkCancellation()
                     source = result; language = p.language; english = ""
                 }
-                guard !source.isEmpty else { audio.removeAll(); status = "No speech detected."; return }
+                guard !source.isEmpty else { Diagnostics.event("processing.finished", "No speech"); audio.removeAll(); status = "No speech detected."; return }
                 if p.translation != .transcript { status = "Writing English…" }
+                Diagnostics.event("editing.start", p.translation.rawValue)
+                let editStart = ProcessInfo.processInfo.systemUptime
                 let text = try await editor.edit(source, p)
+                Diagnostics.timing("editing", since: editStart)
                 try Task.checkCancellation()
                 english = text
                 if let lookup {
@@ -213,13 +233,22 @@ import AVFoundation
                 if p.review { status = "Review mode is on. Ready to review and copy." }
                 else if !insert { status = "Reprocessed. Use Copy result to insert it." }
                 else if let destination = target {
+                    Diagnostics.event("insertion.start")
+                    let insertStart = ProcessInfo.processInfo.systemUptime
                     insertionDetails = "TalkToMe \(AccessibilityAccess.version)\n"
                     let outcome = try await destination.insert(text, valid: { self.target != nil && self.revision == id }, report: {
                         if self.revision == id { self.insertionDetails += $0 + "\n" }
                     })
+                    Diagnostics.timing("insertion", since: insertStart)
+                    Diagnostics.event("insertion.finished", outcome.message)
                     if revision == id { insertionDetails += "Outcome: \(outcome.message)\n"; status = outcome.message }
                 } else { status = InsertionOutcome.blocked(targetProblem ?? .focusChanged).message }
-            } catch { if revision == id { status = error.localizedDescription } }
+                Diagnostics.event("processing.finished", "Completed")
+            } catch {
+                if error is CancellationError { Diagnostics.event("processing.cancelled") }
+                else { Diagnostics.error("processing.failed", error) }
+                if revision == id { status = error.localizedDescription }
+            }
         }
     }
     private func clearTarget(problem: InsertionProblem? = nil) {
@@ -228,6 +257,7 @@ import AVFoundation
     }
     func cancel() {
         guard phase != .idle else { return }
+        Diagnostics.event("recording.cancel")
         revision = UUID()
         job?.cancel(); task?.cancel(); task = nil; job = nil
         _ = try? stopMicrophone()
@@ -241,6 +271,7 @@ import AVFoundation
         board.clearContents(); board.setString(text, forType: .string)
         status = "Copied."
     }
+    func copyDebugReport() { copy(Diagnostics.report(prefs)) }
     // Exercise the real app owner and Quit path without requesting microphone access.
     func checkShutdown(_ files: [String], cancelInference: Bool) {
         settingsOpen = false
@@ -281,6 +312,7 @@ import AVFoundation
     func quit(completion: @escaping @MainActor @Sendable () -> Void) {
         guard !closing else { return }
         closing = true
+        Diagnostics.event("exit.requested")
         refreshMenu = nil
         cancel()
         phase = .processing
