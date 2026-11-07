@@ -38,7 +38,7 @@ internal static class EngineInstall
             if (!settings.UseGpu || !NativeEngines.SupportsAvx2 || Environment.GetEnvironmentVariable("TALKTOME_CPU") == "portable" || cudaFailed) return;
             if (!HasNvidiaAdapter()) { CudaFailure = "No NVIDIA display adapter detected; CPU selected."; return; }
             try { await InstallAsync(Catalog.Packages["cuda"], CudaDirectory, progress, token).ConfigureAwait(false); }
-            catch (Exception error) when (!token.IsCancellationRequested && error is IOException or HttpRequestException or TaskCanceledException)
+            catch (Exception error) when (!token.IsCancellationRequested && error is IOException or InvalidDataException or HttpRequestException or TaskCanceledException)
             {
                 cudaFailed = true;
                 CudaFailure = "CUDA download was interrupted or could not be verified. Using CPU; restart the app to retry.";
