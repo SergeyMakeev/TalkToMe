@@ -35,6 +35,8 @@ Pushing the tag starts the same workflow with publishing enabled. Choose either 
 
 See the [app README](../../README.md) for microphone permissions, speech models, and llama-server setup.
 
+Windows packages use `.github/scripts/package-windows.ps1` to create ordinary relative ZIP paths, without a `.` folder or `./` prefixes. Packaging checks extraction with Windows' built-in `Expand-Archive` and compares every extracted file's SHA-256 hash before uploading.
+
 ## Shared Windows engines
 
 Ordinary app builds use `Shared/WindowsRuntime.json`, which pins immutable CPU and CUDA ZIP URLs, sizes, SHA-256 hashes and file inventories. Do not rebuild or attach these engines to every app release. The app automatically installs them once in the current user's cache; non-NVIDIA machines do not download CUDA.

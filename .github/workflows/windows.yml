@@ -107,7 +107,7 @@ jobs:
           New-Item -ItemType Directory -Path "$package/asr"
           Copy-Item -LiteralPath asr/worker.py -Destination "$package/asr"
           Copy-Item -LiteralPath TalkToMe.cmd, setup.ps1, requirements.txt, settings.example.json, README.md, LICENSE -Destination $package
-          tar.exe -a -cf build/TalkToMe-Windows-x64.zip -C $package .
+          ./.github/scripts/package-windows.ps1 -Source $package -Destination build/TalkToMe-Windows-x64.zip
       - uses: actions/upload-artifact@v6
         if: inputs.version
         with:
