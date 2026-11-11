@@ -235,7 +235,10 @@ internal static class Program
         // engineering prompt is tested separately with --translation-check; scalar
         // prefill of hundreds of tokens can exceed five minutes on hosted runners.
         if (Environment.GetEnvironmentVariable("TALKTOME_CPU") == "portable" && translation.StartsWith("qwen"))
-            settings.Prompt = "Translate the Russian transcript into English. Return only the translation.";
+        {
+            settings.Prompt = "Translate the transcript field from Russian into English. For example: Привет -> Hello. Return only the English translation.";
+            settings.Temperature = 0; // This is an engine compatibility check, not a sampling-quality evaluation.
+        }
         settings.Validate();
         settings.ModelDirectory = Path.GetFullPath(directory);
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(25));
