@@ -240,6 +240,7 @@ if args.count == 2 && args[1] == "--check-diagnostics" {
                   try KeyChord(draft.cancelShortcut) == KeyChord("Ctrl+Alt+Escape") else { throw Failure("Default talking shortcut failed.") }
             try Data(#"{"shortcut":"Ctrl + Numpad 0","cancelShortcut":"Control+Option+F10","review":false}"#.utf8).write(to: file)
             let migrated = try Preferences.load(from: file)
+            guard migrated.processing == .light, migrated.engineeringTerms else { throw Failure("Legacy processing defaults changed.") }
             guard migrated.shortcut == draft.shortcut, migrated.cancelShortcut == draft.cancelShortcut, !migrated.review else {
                 throw Failure("Legacy Mac shortcuts did not migrate or review mode changed.")
             }
@@ -249,6 +250,7 @@ if args.count == 2 && args[1] == "--check-diagnostics" {
             draft.shortcut = "Control+Option+F9"
             draft.cancelShortcut = "Control+Shift+Escape"
             draft.threads = 1; draft.review = true; draft.glossary = ["Metal"]; draft.prompt = "Edit lightly."
+            draft.processing = .heavy; draft.engineeringTerms = false
             try draft.save(to: file)
             guard try Preferences.load(from: file) == draft else { throw Failure("Preferences did not round trip.") }
             var keypad = draft

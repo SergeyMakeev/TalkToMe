@@ -112,20 +112,26 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         let defaults = p.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         var instruction = try defaults ? defaultPrompt : p.prompt
         var format: [String: Any] = [:]
-        if p.translation.bundled {
+        if defaults || p.translation.bundled {
             guard let file = Bundle.main.url(forResource: "LocalEditing", withExtension: "json"),
                   let loaded = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any],
                   let suffix = loaded[defaults ? "instruction" : "custom_instruction"] as? String else { throw Failure("The app is missing its editing format.") }
             format = loaded
-            instruction += "\n" + suffix
+            if defaults {
+                guard let mode = loaded[p.processing.rawValue + "_instruction"] as? String else { throw Failure("The app is missing its processing instructions.") }
+                instruction += "\n" + mode
+            }
+            if p.translation.bundled { instruction += "\n" + suffix }
         }
         var messages: [[String: String]] = [["role": "system", "content": instruction]]
         // The tiny model tends to copy examples; larger models benefit from them.
         if p.translation.bundled && p.translation != .qwen08 && defaults,
-           let examples = format["examples"] as? [[String: String]] { messages += examples }
+           let examples = format[p.processing == .heavy ? "heavy_examples" : "examples"] as? [[String: String]] { messages += examples }
         let protectedInput = defaults ? DictationStyle.protect(transcript).text : transcript
-        let user = try JSONSerialization.data(withJSONObject: ["transcript": protectedInput, "glossary": p.glossary], options: [.sortedKeys])
-        let prefix = defaults ? (format["user_prefix"] as? String ?? "") : ""
+        var input: [String: Any] = ["transcript": protectedInput, "glossary": p.glossary]
+        if defaults && p.engineeringTerms { input["engineering_terms"] = try EngineeringVocabulary.hints(protectedInput, p.glossary) }
+        let user = try JSONSerialization.data(withJSONObject: input, options: [.sortedKeys])
+        let prefix = defaults && p.translation.bundled ? (format[p.processing.rawValue + "_prefix"] as? String ?? "") : ""
         messages.append(["role": "user", "content": prefix + String(decoding: user, as: UTF8.self)])
         var body: [String: Any] = ["model": p.model, "temperature": p.temperature, "stream": false,
             "chat_template_kwargs": ["enable_thinking": false], "max_tokens": min(4096, max(160, protectedInput.utf16.count + 96)),
@@ -208,6 +214,7 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         throw Failure("Local llama-server is still loading. Retry when it is ready.")
     }
     func edit(_ transcript: String, _ preferences: Preferences) async throws -> String {
+        if !preferences.processText { return transcript }
         if preferences.translation != .translategemma { return try await editChunk(transcript, preferences) }
         if !TranslateGemma.needsTranslation(transcript) { return transcript }
         var result = ""
@@ -220,7 +227,7 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
     }
     private func editChunk(_ transcript: String, _ preferences: Preferences) async throws -> String {
         var p = preferences
-        if p.translation == .transcript { return transcript }
+        if !p.processText { return transcript }
         if p.translation.bundled {
             let asset = try ModelDownload.get(p.translation.rawValue)
             guard asset.installed else { throw Failure("Open Settings → Models to download your translation model.") }

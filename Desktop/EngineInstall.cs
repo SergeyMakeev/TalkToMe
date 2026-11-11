@@ -22,8 +22,8 @@ internal static class EngineInstall
         using var file = typeof(EngineInstall).Assembly.GetManifestResourceStream("TalkToMe.WindowsRuntime.json")!;
         return JsonSerializer.Deserialize<Manifest>(file, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
     }
-    internal static bool Required(Settings s) => s.BundledSpeech || s.LocalTranslation ||
-        s.LocalServer is { Executable: "" };
+    internal static bool Required(Settings s) => s.BundledSpeech || s.ProcessText && (s.LocalTranslation ||
+        s.Translation == "server" && s.LocalServer is { Executable: "" });
     internal static async Task EnsureAsync(Settings settings, CancellationToken token, IProgress<string>? progress = null)
     {
         if (!Required(settings) || !string.IsNullOrEmpty(Override)) return;

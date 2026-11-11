@@ -15,6 +15,7 @@
     <EmbeddedResource Include="../Shared/EnglishPrompt.txt" LogicalName="TalkToMe.EnglishPrompt.txt" />
     <EmbeddedResource Include="../Shared/TranslateGemmaPrompt.txt" LogicalName="TalkToMe.TranslateGemmaPrompt.txt" />
     <EmbeddedResource Include="../Shared/LocalEditing.json" LogicalName="TalkToMe.LocalEditing.json" />
+    <EmbeddedResource Include="../Shared/EngineeringTerms.json" LogicalName="TalkToMe.EngineeringTerms.json" />
     <EmbeddedResource Include="../Shared/Models.json" LogicalName="TalkToMe.Models.json" />
     <EmbeddedResource Include="../Shared/WindowsRuntime.json" LogicalName="TalkToMe.WindowsRuntime.json" />
     <Content Include="../Shared/GemmaTerms.txt;../Shared/GemmaNotice.txt;../Shared/ModelNotices.txt" Link="licenses/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" ExcludeFromSingleFile="true" />

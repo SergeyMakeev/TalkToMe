@@ -20,6 +20,24 @@ internal static class EditingCheck
     }
     internal static void Check()
     {
+        foreach (var item in Cases("VocabularyCases").EnumerateArray())
+        {
+            string input = DictationStyle.Protect(item.GetProperty("transcript").GetString()!).Text;
+            string[] personal = item.GetProperty("glossary").EnumerateArray().Select(x => x.GetString()!).ToArray();
+            var hints = JsonSerializer.SerializeToElement(EngineeringVocabulary.Hints(input, personal));
+            Assert(hints.EnumerateArray().Select(h => h.GetProperty("term").GetString()).SequenceEqual(
+                item.GetProperty("terms").EnumerateArray().Select(t => t.GetString())), item.GetProperty("name").GetString()!);
+        }
+        var bypass = Settings.Defaults(Environment.CurrentDirectory); bypass.Processing = "none"; bypass.BundledSpeech = false;
+        Assert(!bypass.RequiredModels().Any() && !EngineInstall.Required(bypass), "none needs no editing download");
+        using (var editor = new EnglishEditor(bypass))
+        {
+            const string raw = "  Ну, три, um, three jay ess.  \n";
+            editor.PrepareAsync(default).GetAwaiter().GetResult();
+            Assert(editor.ProcessId == null && editor.EditAsync(raw, default).GetAwaiter().GetResult() == raw, "none is exact and never starts a server");
+        }
+        bypass.Processing = "invalid";
+        try { bypass.Validate(); throw new Exception("Invalid mode accepted"); } catch (InvalidDataException) { }
         const string codeSample = "`x—y`\n```text\n- keep this.\n```\n🙂";
         Assert(DictationStyle.Apply(codeSample, codeSample) == codeSample, "code whitespace, punctuation and emoji preserved");
         const string emojiSample = "Hi 👩🏽‍💻 🇺🇸 1️⃣ 🙂 `literal🙂` __TTM_EMOJI_0__";
@@ -49,8 +67,16 @@ internal static class EditingCheck
             settings.Validate();
             Assert(settings.RequiredModels().Contains(model) && ModelDownload.Get(model).Size > 0, "selectable model " + model);
             var body = JsonSerializer.SerializeToElement(EnglishEditor.RequestBody("Проверка", settings, model));
-            Assert(body.GetProperty("messages").GetArrayLength() == (model == "qwen08" ? 2 : 8), "examples " + model);
+            Assert(body.GetProperty("messages").GetArrayLength() == (model == "qwen08" ? 2 : 10), "examples " + model);
             Assert(body.GetProperty("response_format").GetProperty("type").GetString() == "json_schema", "constrained format " + model);
+            settings.Processing = "heavy";
+            body = JsonSerializer.SerializeToElement(EnglishEditor.RequestBody("three jay ess", settings, model));
+            Assert(body.GetProperty("messages")[0].GetProperty("content").GetString()!.Contains("Processing level: HEAVY"), "heavy prompt " + model);
+            Assert(body.GetProperty("messages").GetArrayLength() == (model == "qwen08" ? 2 : 10), "heavy examples " + model);
+            Assert(body.GetProperty("messages").EnumerateArray().Last().GetProperty("content").GetString()!.Contains("three.js"), "engineering hints " + model);
+            settings.EngineeringTerms = false;
+            body = JsonSerializer.SerializeToElement(EnglishEditor.RequestBody("three jay ess", settings, model));
+            Assert(!body.GetProperty("messages").EnumerateArray().Last().GetProperty("content").GetString()!.Contains("engineering_terms"), "dictionary can be disabled");
             settings.Prompt = "Custom instructions.";
             body = JsonSerializer.SerializeToElement(EnglishEditor.RequestBody("Test", settings, model));
             Assert(body.GetProperty("messages").GetArrayLength() == 2, "custom prompt excludes examples");
@@ -75,7 +101,7 @@ internal static class EditingCheck
         using var gemmaEditor = new EnglishEditor(gemma);
         Assert(gemmaEditor.EditAsync("Keep this English text.", default).GetAwaiter().GetResult() == "Keep this English text.", "English needs no translator download");
     }
-    internal static async Task RunModels(string directory, string model, bool gpu = true)
+    internal static async Task RunModels(string directory, string model, bool gpu = true, bool engineering = false)
     {
         var settings = Settings.Defaults(Environment.CurrentDirectory);
         settings.ModelDirectory = Path.GetFullPath(directory); settings.Translation = model;
@@ -84,15 +110,22 @@ internal static class EditingCheck
         if (!settings.LocalTranslation) throw new ArgumentException("Choose a bundled translator.");
         await ModelDownload.Get(model).InstallAsync(settings.ModelDirectory, new Progress<string>(), default);
         using var editor = new EnglishEditor(settings);
-        foreach (var item in Cases(model == "translategemma" ? "TranslateGemmaCases" : "TranslationCases").EnumerateArray())
+        var failures = new List<string>();
+        var cases = Cases(model == "translategemma" ? "TranslateGemmaCases" : "TranslationCases").EnumerateArray().ToList();
+        // 2B remains supported for Light editing. The advanced quality suite targets 4B;
+        // --engineering-check also runs it on smaller models to measure their limitations.
+        if (model == "qwen4" || engineering) cases.AddRange(Cases("EngineeringCases").EnumerateArray());
+        foreach (var item in cases)
         {
             settings.Glossary = item.GetProperty("glossary").EnumerateArray().Select(x => x.GetString()!).ToArray();
+            settings.Processing = item.TryGetProperty("processing", out var mode) ? mode.GetString()! : "light";
             string text = await editor.EditAsync(item.GetProperty("transcript").GetString()!, default);
             Console.WriteLine(model + ": " + item.GetProperty("name").GetString() + ": " + text);
-            Assert(item.GetProperty("contains").EnumerateArray().All(x => text.Contains(x.GetString()!, StringComparison.OrdinalIgnoreCase)) &&
+            bool passed = item.GetProperty("contains").EnumerateArray().All(x => text.Contains(x.GetString()!, StringComparison.OrdinalIgnoreCase)) &&
                 item.GetProperty("excludes").EnumerateArray().All(x => !text.Contains(x.GetString()!, StringComparison.OrdinalIgnoreCase)) &&
-                (!item.TryGetProperty("matches", out var patterns) || patterns.EnumerateArray().All(x => Regex.IsMatch(text, x.GetString()!, RegexOptions.IgnoreCase))),
-                model + ": " + item.GetProperty("name").GetString());
+                (!item.TryGetProperty("matches", out var patterns) || patterns.EnumerateArray().All(x => Regex.IsMatch(text, x.GetString()!, RegexOptions.IgnoreCase)));
+            if (!passed) failures.Add(item.GetProperty("name").GetString()!);
         }
+        Assert(failures.Count == 0, model + ": " + string.Join(", ", failures));
     }
 }

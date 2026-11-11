@@ -71,7 +71,7 @@ internal sealed class LocalServer(Settings settings) : IDisposable
     }
     private async Task PrepareLockedAsync(CancellationToken token)
     {
-        if (settings.Translation == "transcript") return;
+        if (!settings.ProcessText) return;
         await EngineInstall.EnsureAsync(settings, token);
         var local = settings.LocalServer;
         if (settings.LocalTranslation)

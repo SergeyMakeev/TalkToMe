@@ -89,9 +89,25 @@ You can cancel setup and open **Settings → Models** again. Completed downloads
 
 For fast Russian speech, try **Whisper Large v3 Turbo** and set **Dictation → Spoken language → Russian** when speaking mainly Russian. The default **English / Russian** mode restricts Whisper's language detection to these two languages and supplies software engineering vocabulary. If the source transcript is wrong, changing the translator cannot reliably recover the missing words. Qwen 2B and 4B use the same local engine and support Metal on Apple silicon.
 
-The default editing instructions produce natural US English for software engineering discussions, preserve tone and technical details, and apply spoken self-corrections. Existing backticked code is checked before insertion. Emoji placeholders are restored exactly; prose uses ASCII punctuation and list items have no trailing periods. Custom prompts remain unchanged; choose **Editing → Restore default instructions** to adopt these rules if you saved your own prompt.
+Choose **Settings → Editing → Text processing**:
+
+| Level | Result |
+| --- | --- |
+| None | The original speech transcript, in the spoken language. No editing request, model startup or editing-model download |
+| Light (default) | Natural US English with grammar, word order, fillers, repetitions and spoken corrections cleaned up; keeps the sequence of ideas |
+| Heavy | Reorganizes rambling speech into clear engineering prose, groups related ideas and uses paragraphs or task lists where appropriate |
+
+Both editing levels ask for digits in quantities, measurements, percentages and counting, while retaining spellings like `three.js` and idioms like "one of the options". Heavy is a faithful rewrite, not a summary: details, constraints, uncertainty and questions must survive. Existing preferences stay on Light. Choosing None preserves your model selection for when you turn editing back on; already downloaded models remain cached.
+
+The optional built-in [engineering dictionary](Shared/EngineeringTerms.json) covers web development, languages, APIs, infrastructure, graphics and ML, with English and Russian pronunciation variants. At most 24 relevant hints are sent per transcript; unrelated terms are excluded. Hints guide the editor instead of blindly replacing ordinary words. Your personal glossary takes precedence for spelling. Backticked code is excluded from dictionary matching, checked before insertion, and preserved exactly. Emoji placeholders are restored exactly; prose uses ASCII punctuation and list items have no trailing periods.
+
+For Heavy, **Qwen 4B** performed better in our focused local checks. With these prompts, it passed all 16 baseline and engineering cases; Qwen 2B passed the 9 baseline cases but failed 6 of the 7 harder engineering cases, including some numeric formatting and a Russian self-correction. These checks are not a broad benchmark, and small models can still omit or alter meaning. Review important dictation and compare it with the source transcript. The app rejects damaged code/emoji placeholders and incomplete or reasoning responses, but cannot automatically detect every meaning change.
+
+Custom instructions continue to override the built-in Light/Heavy rules and engineering hints. Choose **Editing → Restore default instructions** to use the presets. **Transcript only** remains an alternative way to bypass editing. **TranslateGemma** retains its dedicated translation behavior; select Qwen or your own editing server for Light/Heavy processing and dictionary hints.
 
 The 0.8B model produced omissions, untranslated text and explanatory prose in local checks. The 2B and 4B checks cover counting, questions, corrections, technical dictation, commands as data, negation/numbers, code, emojis and lists. These are focused regression cases, not a broad translation benchmark; formatting checks cannot detect every mistranslation. [Test inputs](Checks/TranslationCases.json)
+
+The [advanced engineering cases](Checks/EngineeringCases.json) additionally check terminology, numeric precision, structured tasks and preservation of uncertainty. CI requires these cases to pass with Qwen 4B; it runs the baseline suite on 2B. Run `dotnet run --project Checks -c Release -- --engineering-check build/model-check qwen2` to evaluate the harder cases on 2B as well; that command reports known quality failures instead of treating them as passing tests.
 
 **Parakeet TDT v3** uses the bundled [NeMo-Speech.cpp](https://github.com/NVIDIA/NeMo-Speech.cpp) runtime and NVIDIA's Q8_0 model. It loads once and stays ready between recordings. Windows uses bundled CUDA when available, and Apple silicon uses Metal when enabled. A failed GPU load or inference retries on CPU; Intel Macs use CPU. Parakeet detects the spoken language itself. It does not use Whisper's speech detector or glossary prompt.
 
@@ -167,7 +183,7 @@ Open **Settings** from the result window or the menu-bar / notification-area ico
 | Models | Listening model, output language mode, optional local translator, download size and verification |
 | Speech | Mac model files, Metal and CPU threads. Windows custom Python interpreter, model directory and device options |
 | Server | URL, served model alias, API key, timeout, optional local executable and GGUF, context size and GPU layers |
-| Editing | Editing instructions, restore-default button, temperature and personal glossary |
+| Editing | None/Light/Heavy processing, engineering dictionary, advanced instructions, restore-default button, temperature and personal glossary |
 
 Mac preferences and downloaded models live under `~/Library/Application Support/TalkToMe/`. API keys go into the login Keychain for each server origin. Windows stores new preferences and models under `%LOCALAPPDATA%\TalkToMe` and continues using an existing installation’s `settings.json` if present. Saved server keys are encrypted for the current Windows user and server origin.
 

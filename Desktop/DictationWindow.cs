@@ -446,8 +446,8 @@ internal sealed class DictationWindow : Form
                 SetStatus("No speech detected.", "No speech detected", true);
                 return;
             }
-            if (settings.Translation != "transcript") SetStatus("Writing English…", "Writing English…");
-            Diagnostics.Event("editing.start", settings.Translation);
+            if (settings.ProcessText) SetStatus("Writing English…", "Writing English…");
+            Diagnostics.Event("editing.start", $"{settings.Translation}; processing={settings.Processing}");
             var result = await editor.EditAsync(s.Transcript, token, metrics);
             if (current != s || exiting) return;
             english.Text = result.ReplaceLineEndings();

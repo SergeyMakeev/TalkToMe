@@ -12,14 +12,14 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
     private LocalServer server = new(config);
     internal int? ProcessId => server.ProcessId;
     private static readonly JsonSerializerOptions TranscriptJson = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
-    public Task PrepareAsync(CancellationToken token) => server.PrepareAsync(token);
+    public Task PrepareAsync(CancellationToken token) => config.ProcessText ? server.PrepareAsync(token) : Task.CompletedTask;
     private HttpClient http = CreateClient(config);
     private static HttpClient CreateClient(Settings s) => new(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = !s.LocalTranslation })
         { Timeout = TimeSpan.FromSeconds(s.LocalTranslation ? Math.Max(300, s.TimeoutSeconds) : s.TimeoutSeconds) };
 
     public void Reconfigure(Settings next)
     {
-        if (next.Translation != config.Translation || next.UseGpu != config.UseGpu || next.LocalServer != config.LocalServer || next.ServerUrl != config.ServerUrl || next.Model != config.Model ||
+        if (next.ProcessText != config.ProcessText || next.Translation != config.Translation || next.UseGpu != config.UseGpu || next.LocalServer != config.LocalServer || next.ServerUrl != config.ServerUrl || next.Model != config.Model ||
             next.ProtectedApiKey != config.ProtectedApiKey || next.UseEnvironmentKey != config.UseEnvironmentKey)
         {
             server.Dispose();
@@ -48,14 +48,17 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
         if (settings.Translation == "translategemma") return TranslateGemma.Request(transcript, model);
         bool defaults = string.IsNullOrWhiteSpace(settings.Prompt);
         string instruction = defaults ? Instruction : settings.Prompt;
+        if (defaults) instruction += "\n" + LocalEditing.GetProperty(settings.Processing + "_instruction").GetString();
         if (settings.LocalTranslation) instruction += "\n" + LocalEditing.GetProperty(defaults ? "instruction" : "custom_instruction").GetString();
         var messages = new List<object> { new { role = "system", content = instruction } };
         // Tiny 0.8B tends to copy examples verbatim. Larger models benefit from them.
         if (settings.LocalTranslation && settings.Translation != "qwen08" && defaults)
-            messages.AddRange(LocalEditing.GetProperty("examples").EnumerateArray().Select(x => (object)x));
+            messages.AddRange(LocalEditing.GetProperty(settings.Processing == "heavy" ? "heavy_examples" : "examples").EnumerateArray().Select(x => (object)x));
         string protectedInput = defaults ? DictationStyle.Protect(transcript).Text : transcript;
-        string user = JsonSerializer.Serialize(new { glossary = settings.Glossary, transcript = protectedInput }, TranscriptJson);
-        if (settings.LocalTranslation && defaults) user = LocalEditing.GetProperty("user_prefix").GetString() + user;
+        var data = new Dictionary<string, object> { ["glossary"] = settings.Glossary, ["transcript"] = protectedInput };
+        if (defaults && settings.EngineeringTerms) data["engineering_terms"] = EngineeringVocabulary.Hints(protectedInput, settings.Glossary);
+        string user = JsonSerializer.Serialize(data, TranscriptJson);
+        if (settings.LocalTranslation && defaults) user = LocalEditing.GetProperty(settings.Processing + "_prefix").GetString() + user;
         messages.Add(new { role = "user", content = user });
         var body = new Dictionary<string, object> {
             ["model"] = model, ["messages"] = messages,
@@ -76,8 +79,8 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
 
     public async Task<string> EditAsync(string transcript, CancellationToken token, ProcessingMetrics? metrics = null)
     {
+        if (!config.ProcessText) return transcript;
         if (string.IsNullOrWhiteSpace(transcript)) return "";
-        if (config.Translation == "transcript") return transcript;
         if (config.Translation == "translategemma" && !TranslateGemma.NeedsTranslation(transcript)) return transcript;
         try
         {

@@ -83,6 +83,7 @@ internal static class Diagnostics
         report.AppendLine($"\nUTC: {DateTime.UtcNow:O}\nSpeech: {settings.SpeechModel}; translation: {settings.Translation}; GPU requested: {settings.UseGpu}; language: {settings.Language}");
         report.AppendLine($"Microphone device: {settings.Microphone}; sounds: {settings.Sounds}; toggle: {settings.Toggle}; review: {settings.CopyOnly}");
         report.AppendLine($"Custom editing prompt: {!string.IsNullOrWhiteSpace(settings.Prompt)}; glossary entries: {settings.Glossary.Length}");
+        report.AppendLine($"Text processing: {settings.Processing}; engineering dictionary: {settings.EngineeringTerms}");
         report.AppendLine($"Engine runtime: {EngineInstall.Catalog.Version}; CPU installed: {EngineInstall.Installed(EngineInstall.Catalog.Packages["cpu"], EngineInstall.CpuDirectory)}; CUDA installed: {EngineInstall.Installed(EngineInstall.Catalog.Packages["cuda"], EngineInstall.CudaDirectory)}; NVIDIA adapter: {EngineInstall.HasNvidiaAdapter()}");
         report.AppendLine("No transcripts, audio, glossary contents, editing prompts or API keys are included. Memory dumps are separate files and may contain private data.");
         foreach (string name in new[] { "events.log.previous", "events.log", "monitor.txt" })
