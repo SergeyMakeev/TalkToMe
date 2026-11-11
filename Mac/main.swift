@@ -206,8 +206,18 @@ if args.count == 2 && args[1] == "--check-diagnostics" {
         do {
             var p = Preferences()
             p.translation = .server; p.serverURL = args[2]; p.model = "ci-model"; p.prompt = "CI instructions"; p.glossary = ["Metal"]
-            let result = try await EnglishEditor().edit("Проверка Metal", p)
+            let editor = EnglishEditor()
+            let result = try await editor.edit("Проверка Metal", p)
             guard result == "Check Metal." else { throw Failure("Unexpected editor response.") }
+            p.prompt = ""; p.glossary = []; p.processing = .heavy
+            guard try await editor.edit("Why did it fail?", p) == "Why did it fail?" else { throw Failure("Question retry did not repair the output.") }
+            do {
+                _ = try await editor.edit("Why did it fail?", p)
+                throw Failure("Lost question accepted after retry.")
+            } catch let error as Failure where error.localizedDescription.contains("removed a question") { }
+            p.processing = .none
+            guard try await editor.edit("  Why did it fail?  ", p) == "  Why did it fail?  " else { throw Failure("None did not bypass editing.") }
+            editor.close()
             exit(0)
         } catch { fputs("\(error.localizedDescription)\n", stderr); exit(1) }
     }

@@ -107,7 +107,7 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
             return try String(contentsOf: file, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
-    nonisolated static func requestBody(_ transcript: String, _ p: Preferences) throws -> [String: Any] {
+    nonisolated static func requestBody(_ transcript: String, _ p: Preferences, preserveQuestions: Bool = false) throws -> [String: Any] {
         if p.translation == .translategemma { return try TranslateGemma.request(transcript, model: p.model) }
         let defaults = p.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         var instruction = try defaults ? defaultPrompt : p.prompt
@@ -132,7 +132,8 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         if defaults && p.engineeringTerms { input["engineering_terms"] = try EngineeringVocabulary.hints(protectedInput, p.glossary) }
         let user = try JSONSerialization.data(withJSONObject: input, options: [.sortedKeys])
         let prefix = defaults && p.translation.bundled ? (format[p.processing.rawValue + "_prefix"] as? String ?? "") : ""
-        messages.append(["role": "user", "content": prefix + String(decoding: user, as: UTF8.self)])
+        let reminder = preserveQuestions ? "Preserve the speaker's questions as questions ending in '?'. Do not turn them into statements or answer them.\n" : ""
+        messages.append(["role": "user", "content": reminder + prefix + String(decoding: user, as: UTF8.self)])
         var body: [String: Any] = ["model": p.model, "temperature": p.temperature, "stream": false,
             "chat_template_kwargs": ["enable_thinking": false], "max_tokens": min(4096, max(160, protectedInput.utf16.count + 96)),
             "messages": messages]
@@ -215,7 +216,17 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
     }
     func edit(_ transcript: String, _ preferences: Preferences) async throws -> String {
         if !preferences.processText { return transcript }
-        if preferences.translation != .translategemma { return try await editChunk(transcript, preferences) }
+        if preferences.translation != .translategemma {
+            var text = try await editChunk(transcript, preferences)
+            if preferences.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && DictationStyle.missingQuestion(transcript, text) {
+                Diagnostics.event("editing.retry", "Question preservation")
+                text = try await editChunk(transcript, preferences, preserveQuestions: true)
+                if DictationStyle.missingQuestion(transcript, text) {
+                    throw Failure("The editor removed a question. Retry processing or copy the source transcript.")
+                }
+            }
+            return text
+        }
         if !TranslateGemma.needsTranslation(transcript) { return transcript }
         var result = ""
         for chunk in try TranslateGemma.chunks(transcript) {
@@ -225,7 +236,7 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         }
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
-    private func editChunk(_ transcript: String, _ preferences: Preferences) async throws -> String {
+    private func editChunk(_ transcript: String, _ preferences: Preferences, preserveQuestions: Bool = false) async throws -> String {
         var p = preferences
         if !p.processText { return transcript }
         if p.translation.bundled {
@@ -250,7 +261,7 @@ private final class NoRedirect: NSObject, URLSessionTaskDelegate {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if !key.isEmpty { request.setValue("Bearer " + key, forHTTPHeaderField: "Authorization") }
-        request.httpBody = try JSONSerialization.data(withJSONObject: Self.requestBody(transcript, p))
+        request.httpBody = try JSONSerialization.data(withJSONObject: Self.requestBody(transcript, p, preserveQuestions: preserveQuestions))
         let client = p.translation.bundled ? loopback : session
         let requested = ProcessInfo.processInfo.systemUptime
         let (data, response) = try await client.data(for: request)

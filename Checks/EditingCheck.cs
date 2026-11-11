@@ -20,6 +20,10 @@ internal static class EditingCheck
     }
     internal static void Check()
     {
+        QuestionRetryCheck.Run().GetAwaiter().GetResult();
+        Assert(DictationStyle.MissingQuestion("Why did it fail?", "It failed.") &&
+            !DictationStyle.MissingQuestion("Why did it fail?", "Why did it fail?") &&
+            !DictationStyle.MissingQuestion("Use `a ? b : c`.", "Use `a ? b : c`."), "lost questions exclude protected code");
         foreach (var item in Cases("VocabularyCases").EnumerateArray())
         {
             string input = DictationStyle.Protect(item.GetProperty("transcript").GetString()!).Text;

@@ -6,6 +6,8 @@ namespace TalkToMe;
 
 internal static class DictationStyle
 {
+    internal static bool MissingQuestion(string source, string result) =>
+        Protect(source).Text.Contains('?') && !Protect(result).Text.Contains('?');
     private static readonly Regex Code = new(@"(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)");
     private static bool IsEmoji(string element) => element.EnumerateRunes().Any(r => r.Value is >= 0x1F000 and <= 0x1FAFF or >= 0x2600 and <= 0x27BF or 0xFE0F or 0x20E3);
     private static string Prefix(string source)

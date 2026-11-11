@@ -9,6 +9,11 @@ private func editingFixture(_ name: String) throws -> [[String: Any]] {
 }
 
 func checkEditingResponses() throws {
+    guard DictationStyle.missingQuestion("Why did it fail?", "It failed."),
+          !DictationStyle.missingQuestion("Why did it fail?", "Why did it fail?"),
+          !DictationStyle.missingQuestion("Use `a ? b : c`.", "Use `a ? b : c`.") else {
+        throw Failure("Question preservation guard changed protected code.")
+    }
     for item in try editingFixture("VocabularyCases") {
         let input = DictationStyle.protect(item["transcript"] as! String).text
         guard try EngineeringVocabulary.hints(input, item["glossary"] as! [String]).map({ $0["term"]! }) == item["terms"] as! [String] else {
