@@ -44,6 +44,11 @@ internal static class Program
             try { EditingCheck.RunModels(modelDir, modelId).GetAwaiter().GetResult(); return 0; }
             catch (Exception error) { Console.Error.WriteLine(error); return 1; }
         }
+        if (args is ["--engineering-check", var engineeringDirectory, var engineeringModel])
+        {
+            try { EditingCheck.RunModels(engineeringDirectory, engineeringModel, engineering: true).GetAwaiter().GetResult(); return 0; }
+            catch (Exception error) { Console.Error.WriteLine(error); return 1; }
+        }
         if (args is ["--translation-check", var cpuModelDir, var cpuModelId, "cpu"])
         {
             try { EditingCheck.RunModels(cpuModelDir, cpuModelId, gpu: false).GetAwaiter().GetResult(); return 0; }
@@ -152,14 +157,17 @@ internal static class Program
             File.WriteAllText(path, """{"shortcut":"Ctrl+Alt+F9","localServer":{"executable":"llama-server.exe","modelFile":"model.gguf"}}""");
             var old = Settings.Load(root.FullName);
             Assert(!old.BundledSpeech && old.Translation == "server", "legacy engine choice");
+            Assert(old.Processing == "light" && old.EngineeringTerms, "legacy settings keep light processing");
             Assert(old.LocalServer is { ContextSize: 8192, GpuLayers: "all" } && old.Sounds && old.RecordingMinutes == 5, "old preference defaults");
             old.Prompt = "Custom editing instructions."; old.Glossary = ["CFrame", "Vulkan"];
+            old.Processing = "heavy"; old.EngineeringTerms = false;
             old.SetApiKey("example-dummy-key");
             using var form = new SettingsDialog(old, _ => false);
             var draft = form.ReadForm();
             draft.Save();
             var saved = Settings.Load(root.FullName);
             Assert(saved.Shortcut == "Ctrl+Alt+F9", "saved recording shortcut survives settings dialog");
+            Assert(saved.Processing == "heavy" && !saved.EngineeringTerms, "processing preferences survive settings dialog and save");
             Assert(saved.Prompt == old.Prompt && saved.Glossary.SequenceEqual(old.Glossary) && saved.LocalServer == old.LocalServer,
                 "settings dialog round trip");
             Assert(!File.ReadAllText(path).Contains("example-dummy-key") && saved.ReadApiKey() == "example-dummy-key", "protected server key");
@@ -227,7 +235,10 @@ internal static class Program
         // engineering prompt is tested separately with --translation-check; scalar
         // prefill of hundreds of tokens can exceed five minutes on hosted runners.
         if (Environment.GetEnvironmentVariable("TALKTOME_CPU") == "portable" && translation.StartsWith("qwen"))
-            settings.Prompt = "Translate the Russian transcript into English. Return only the translation.";
+        {
+            settings.Prompt = "Translate the transcript field from Russian into English. For example: Привет -> Hello. Return only the English translation.";
+            settings.Temperature = 0; // This is an engine compatibility check, not a sampling-quality evaluation.
+        }
         settings.Validate();
         settings.ModelDirectory = Path.GetFullPath(directory);
         using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(25));

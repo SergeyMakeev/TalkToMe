@@ -31,8 +31,8 @@ if [[ -n "${APP_VERSION:-}" ]]; then
     plutil -replace CFBundleShortVersionString -string "$APP_VERSION" "$app/Info.plist"
     plutil -replace CFBundleVersion -string "$APP_VERSION" "$app/Info.plist"
 fi
-cp Shared/{EnglishPrompt.txt,TranslateGemmaPrompt.txt,Models.json,LocalEditing.json} Desktop/Sounds/{start,stop}.wav "$app/Resources/"
-cp Checks/{EditingResponses,TranslationCases,TranslateGemmaCases}.json "$app/Resources/"
+cp Shared/{EnglishPrompt.txt,TranslateGemmaPrompt.txt,Models.json,LocalEditing.json,EngineeringTerms.json} Desktop/Sounds/{start,stop}.wav "$app/Resources/"
+cp Checks/{EditingResponses,TranslationCases,TranslateGemmaCases,VocabularyCases,EngineeringCases}.json "$app/Resources/"
 cp LICENSE "$app/Resources/TalkToMe-LICENSE.txt"
 cp "$vendor/LICENSE" "$app/Resources/whisper.cpp-LICENSE.txt"
 for size in 16 32 128 256 512; do

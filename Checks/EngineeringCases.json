@@ -1,0 +1,138 @@
+[
+  {
+    "name": "technical names before digits",
+    "transcript": "We use three jay ess with type script. Set the timeout to five seconds and allow three retries.",
+    "glossary": [],
+    "contains": [
+      "three.js",
+      "TypeScript",
+      "5",
+      "seconds",
+      "3",
+      "retries"
+    ],
+    "excludes": [
+      "3.js",
+      "five seconds",
+      "three retries"
+    ]
+  },
+  {
+    "name": "Russian engineering aliases",
+    "transcript": "Мы используем три джей эс и тайп скрипт. Рендеринг занимает двадцать миллисекунд.",
+    "glossary": [],
+    "contains": [
+      "three.js",
+      "TypeScript",
+      "20"
+    ],
+    "excludes": [
+      "3.js"
+    ],
+    "matches": [
+      "(milliseconds|ms)"
+    ]
+  },
+  {
+    "name": "numeric precision and idioms",
+    "transcript": "One of the options is to use version 2.10. Keep the offset at minus zero point five milliseconds and the limit at twenty percent.",
+    "glossary": [],
+    "contains": [
+      "one of",
+      "2.10",
+      "-0.5",
+      "20%"
+    ],
+    "excludes": [
+      "1 of",
+      "version 2.1."
+    ]
+  },
+  {
+    "name": "heavy organize tasks",
+    "processing": "heavy",
+    "transcript": "Okay so we need a few changes. First add two retries to the API request. Then set the timeout, the timeout should be ten seconds. And the last thing is log the failures. Do not log the request body though.",
+    "glossary": [],
+    "contains": [
+      "2",
+      "retries",
+      "10",
+      "seconds",
+      "failures",
+      "body"
+    ],
+    "excludes": [
+      "Okay so",
+      "the timeout, the timeout"
+    ],
+    "matches": [
+      "(?m)^[-*] |(?m)^\\d+[.)] ",
+      "(not|n't)"
+    ]
+  },
+  {
+    "name": "heavy preserve uncertainty and questions",
+    "processing": "heavy",
+    "transcript": "The cache, um, it might be the reason the API is slow. I haven't measured it, so I'm not sure. We should maybe try batching. Why does it only happen on Windows? Do not deploy this yet.",
+    "glossary": [],
+    "contains": [
+      "cache",
+      "API",
+      "batching",
+      "Windows",
+      "?",
+      "deploy"
+    ],
+    "excludes": [
+      "root cause is",
+      "will fix",
+      "um,"
+    ],
+    "matches": [
+      "(might|may|could)",
+      "(not|n't).*measur",
+      "(not|n't) deploy",
+      "[^.?!]*(maybe|consider|could|might)[^.?!]*batch"
+    ]
+  },
+  {
+    "name": "heavy Russian corrections code and emoji",
+    "processing": "heavy",
+    "transcript": "Ну надо таймаут изменить. На пять секунд. Нет, на семь секунд. И еще, ключ `cache_key` не меняй. Не меняй ключ, это важно. 🙂",
+    "glossary": [],
+    "contains": [
+      "timeout",
+      "7",
+      "seconds",
+      "`cache_key`",
+      "important",
+      "🙂"
+    ],
+    "excludes": [
+      "5 seconds",
+      "five seconds",
+      "Ну"
+    ],
+    "matches": [
+      "(not|n't|unchanged)"
+    ]
+  },
+  {
+    "name": "heavy no invented answer",
+    "processing": "heavy",
+    "transcript": "Why, um, why does this function fail when the count is zero?",
+    "glossary": [],
+    "contains": [
+      "why",
+      "function",
+      "0",
+      "?"
+    ],
+    "excludes": [
+      "because",
+      "division",
+      "null pointer",
+      "um,"
+    ]
+  }
+]

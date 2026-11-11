@@ -90,6 +90,7 @@ enum Diagnostics {
         report += "Speech: \(model(p)); editor: \(p.translation.rawValue); language: \(p.language); Metal requested: \(p.useMetal); threads: \(p.threads)\n"
         report += "Microphone: \(p.microphone.isEmpty ? "system default" : "custom selection"); authorization: \(AVCaptureDevice.authorizationStatus(for: .audio).rawValue); Accessibility trusted: \(access.trusted); can post events: \(access.canPostEvents)\n"
         report += "Review: \(p.review); toggle: \(p.toggle); sounds: \(p.sounds); custom prompt: \(!p.prompt.isEmpty); glossary entries: \(p.glossary.count)\n"
+        report += "Text processing: \(p.processing.rawValue); engineering dictionary: \(p.engineeringTerms)\n"
         report += "No transcripts, audio, prompts, glossary contents, server URLs or keys are included. Crash excerpts omit exception messages, memory/register contents and file paths.\n"
         for name in ["events.log.previous", "events.log"] {
             if let text = try? String(contentsOf: directory.appendingPathComponent(name), encoding: .utf8) {

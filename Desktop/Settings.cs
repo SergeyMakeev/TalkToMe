@@ -15,12 +15,15 @@ internal sealed class Settings
     public bool UseGpu { get; set; } = true;
     public string SpeechModel { get; set; } = "base";
     public string Translation { get; set; } = "server";
+    public string Processing { get; set; } = "light";
+    public bool EngineeringTerms { get; set; } = true;
+    [JsonIgnore] public bool ProcessText => Processing != "none" && Translation != "transcript";
     [JsonIgnore] public bool LocalTranslation => Translation is "qwen08" or "qwen2" or "qwen4" or "translategemma";
     [JsonIgnore] public string ModelDirectory { get; set; } = Path.Combine(UserDirectory, "Models");
     public IEnumerable<string> RequiredModels()
     {
         if (BundledSpeech) { yield return SpeechModel; if (SpeechModel != "parakeet") yield return "activity"; }
-        if (LocalTranslation) yield return Translation;
+        if (ProcessText && LocalTranslation) yield return Translation;
     }
     public double Temperature { get; set; } = 0.1;
     public int TimeoutSeconds { get; set; } = 60;
@@ -81,7 +84,7 @@ internal sealed class Settings
             uri.UserInfo.Length + uri.Query.Length + uri.Fragment.Length != 0)
             throw new InvalidDataException("serverUrl must be an HTTP(S) base URL, for example http://127.0.0.1:8080/v1.");
         if (SpeechModel is not ("base" or "speech" or "parakeet") || Translation is not ("server" or "transcript" or "qwen08" or "qwen2" or "qwen4" or "translategemma") ||
-            Language is not ("auto" or "en" or "ru") || TimeoutSeconds is < 1 or > 600 ||
+            Processing is not ("none" or "light" or "heavy") || Language is not ("auto" or "en" or "ru") || TimeoutSeconds is < 1 or > 600 ||
             !double.IsFinite(Temperature) || Temperature is < 0 or > 2 || string.IsNullOrWhiteSpace(Model) || Glossary is null ||
             RecordingMinutes is < 1 or > 60 || Microphone < -1 || string.IsNullOrWhiteSpace(Python) ||
             string.IsNullOrWhiteSpace(WhisperDirectory) || string.IsNullOrWhiteSpace(Device) || string.IsNullOrWhiteSpace(ComputeType))

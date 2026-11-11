@@ -23,6 +23,17 @@ enum Translation: String, Codable, CaseIterable {
     }
 }
 
+enum TextProcessing: String, Codable, CaseIterable {
+    case none, light, heavy
+    var label: String {
+        switch self {
+        case .none: return "None · original transcript"
+        case .light: return "Light · clean up wording"
+        case .heavy: return "Heavy · organize ideas"
+        }
+    }
+}
+
 struct Preferences: Codable, Equatable {
     static let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("TalkToMe", isDirectory: true)
@@ -31,6 +42,9 @@ struct Preferences: Codable, Equatable {
     var serverURL = "http://127.0.0.1:8080/v1"
     var model = "dictation"
     var translation = Translation.qwen2
+    var processing = TextProcessing.light
+    var engineeringTerms = true
+    var processText: Bool { processing != .none && translation != .transcript }
     var manageServer = false
     var executable = ""
     var serverExecutable: String {
@@ -97,7 +111,7 @@ struct Preferences: Codable, Equatable {
             if whisper == model.path { assets.append(model) }
         }
         if !parakeet && vad == activity.path { assets.append(activity) }
-        if translation.bundled { assets.append(try ModelDownload.get(translation.rawValue)) }
+        if processText && translation.bundled { assets.append(try ModelDownload.get(translation.rawValue)) }
         return assets
     }
 

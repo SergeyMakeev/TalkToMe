@@ -113,6 +113,7 @@ struct PreferencesView: View {
                 ForEach(Translation.allCases, id: \.self) { Text($0.label).tag($0) }
             }
             Text("For accuracy, try Whisper Large v3 Turbo and Qwen 2B or 4B. Qwen 0.8B can miss words and instructions.").font(.caption).foregroundStyle(.secondary)
+            if !p.processText { Text("Text processing is off. The original transcript is inserted without an editing model.").font(.caption).foregroundStyle(.secondary) }
             if p.translation == .translategemma {
                 Text("Russian → English translation. English stays unchanged. Editing instructions and glossary are not applied.").font(.caption).foregroundStyle(.secondary)
                 Link("TranslateGemma license (Gemma terms)", destination: URL(string: "https://ai.google.dev/gemma/terms")!)
@@ -210,12 +211,23 @@ struct PreferencesView: View {
                     }.disabled(!p.manageServer)
                 }.tabItem { Text("Server") } }
                 VStack(alignment: .leading) {
+                    Picker("Text processing", selection: $p.processing) {
+                        ForEach(TextProcessing.allCases, id: \.self) { Text($0.label).tag($0) }
+                    }
+                    Text(!p.processText ? "Keep the original transcript in the spoken language. No editing model runs or downloads." :
+                        p.translation == .translategemma ? "TranslateGemma only translates. Choose Qwen or your own server for Light/Heavy cleanup and the engineering dictionary." :
+                        !p.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && p.prompt != standard ? "Custom instructions override Light/Heavy rules and the engineering dictionary. Restore default to use them." :
+                        p.processing == .heavy ? "Organize speech into clear English paragraphs or lists, preserving details and uncertainty. Use digits for quantities. Qwen 4B performed better than 2B in our restructuring checks." :
+                        "Fix grammar, word order, fillers and repetitions. Keep the sequence of ideas. Use digits for quantities and conventional technical spellings.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Toggle("Use built-in engineering dictionary", isOn: $p.engineeringTerms)
+                        .disabled(!p.processText || p.translation == .translategemma || (!p.prompt.isEmpty && p.prompt != standard))
                     HStack {
-                        Text("Editing instructions").font(.headline)
+                        Text("Advanced instructions").font(.headline)
                         Spacer(); Button("Restore default") { p.prompt = standard }
                     }
-                    TextEditor(text: $p.prompt).border(Color.secondary.opacity(0.3))
-                    Text("Glossary · one term per line").font(.headline)
+                    TextEditor(text: $p.prompt).border(Color.secondary.opacity(0.3)).disabled(!p.processText || p.translation == .translategemma)
+                    Text("Personal glossary · one term per line").font(.headline)
                     TextEditor(text: $glossary).border(Color.secondary.opacity(0.3))
                     LabeledContent("Temperature · \(p.temperature, specifier: "%.2f")") { Slider(value: $p.temperature, in: 0...2, step: 0.01) }
                 }.padding().tabItem { Text("Editing") }

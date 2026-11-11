@@ -1,6 +1,9 @@
 import Foundation
 
 enum DictationStyle {
+    static func missingQuestion(_ source: String, _ result: String) -> Bool {
+        protect(source).text.contains("?") && !protect(result).text.contains("?")
+    }
     private static func prefix(_ source: String) -> String {
         var prefix = "__TTM_"
         while source.contains(prefix) { prefix = "_" + prefix }

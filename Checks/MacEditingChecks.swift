@@ -9,6 +9,19 @@ private func editingFixture(_ name: String) throws -> [[String: Any]] {
 }
 
 func checkEditingResponses() throws {
+    guard DictationStyle.missingQuestion("Why did it fail?", "It failed."),
+          !DictationStyle.missingQuestion("Why did it fail?", "Why did it fail?"),
+          !DictationStyle.missingQuestion("Use `a ? b : c`.", "Use `a ? b : c`.") else {
+        throw Failure("Question preservation guard changed protected code.")
+    }
+    for item in try editingFixture("VocabularyCases") {
+        let input = DictationStyle.protect(item["transcript"] as! String).text
+        guard try EngineeringVocabulary.hints(input, item["glossary"] as! [String]).map({ $0["term"]! }) == item["terms"] as! [String] else {
+            throw Failure("Vocabulary check failed: \(item["name"]!)")
+        }
+    }
+    var bypass = Preferences(); bypass.processing = .none; bypass.whisper = "/custom/model"; bypass.vad = ""
+    guard try bypass.requiredModels().isEmpty else { throw Failure("None should not download editing models.") }
     let codeSample = "`x—y`\n```text\n- keep this.\n```\n🙂"
     let emojiSample = "Hi 👩🏽‍💻 🇺🇸 1️⃣ 🙂 `literal🙂` __TTM_EMOJI_0__"
     let protectedEmoji = DictationStyle.protect(emojiSample)
@@ -45,7 +58,14 @@ func checkEditingResponses() throws {
             throw Failure("Local editing format or model missing.")
         }
         let messages = request["messages"] as! [[String: String]]
-        guard messages.count == (model == .qwen08 ? 2 : 8) else { throw Failure("Editing examples missing.") }
+        guard messages.count == (model == .qwen08 ? 2 : 10) else { throw Failure("Editing examples missing.") }
+        p.processing = .heavy
+        let heavy = try EnglishEditor.requestBody("three jay ess", p)["messages"] as! [[String: String]]
+        guard heavy[0]["content"]!.contains("Processing level: HEAVY"), heavy.last!["content"]!.contains("three.js"),
+              heavy.count == (model == .qwen08 ? 2 : 10) else { throw Failure("Heavy processing or engineering hints missing.") }
+        p.engineeringTerms = false
+        let disabled = try EnglishEditor.requestBody("three jay ess", p)["messages"] as! [[String: String]]
+        guard !disabled.last!["content"]!.contains("engineering_terms") else { throw Failure("Dictionary cannot be disabled.") }
         p.prompt = "Custom instructions."
         guard (try EnglishEditor.requestBody("Test", p)["messages"] as! [[String: String]]).count == 2 else {
             throw Failure("Examples override a custom prompt.")
@@ -65,8 +85,14 @@ func checkEditingResponses() throws {
 }
 
 @MainActor func checkTranslationCases(_ editor: EnglishEditor, _ preferences: Preferences) async throws {
-    for item in try editingFixture(preferences.translation == .translategemma ? "TranslateGemmaCases" : "TranslationCases") {
+    var bypass = preferences; bypass.processing = .none
+    let raw = "  Ну, три, um, three jay ess.  \n"
+    guard try await editor.edit(raw, bypass) == raw else { throw Failure("None changed the transcript.") }
+    var cases = try editingFixture(preferences.translation == .translategemma ? "TranslateGemmaCases" : "TranslationCases")
+    if preferences.translation == .qwen4 { cases += try editingFixture("EngineeringCases") }
+    for item in cases {
         var p = preferences; p.glossary = item["glossary"] as! [String]
+        p.processing = TextProcessing(rawValue: item["processing"] as? String ?? "light")!
         let text = try await editor.edit(item["transcript"] as! String, p)
         let lower = text.lowercased()
         guard (item["contains"] as! [String]).allSatisfy({ lower.contains($0.lowercased()) }),

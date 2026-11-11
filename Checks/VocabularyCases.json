@@ -1,0 +1,93 @@
+[
+  {
+    "name": "English technical aliases",
+    "transcript": "Use three jay ess with node js and c plus plus.",
+    "glossary": [],
+    "terms": [
+      "three.js",
+      "Node.js",
+      "C++"
+    ]
+  },
+  {
+    "name": "Russian technical aliases",
+    "transcript": "Попробуй три джей эс и тайп скрипт с веб джи пи ю.",
+    "glossary": [],
+    "terms": [
+      "three.js",
+      "TypeScript",
+      "WebGPU"
+    ]
+  },
+  {
+    "name": "Word boundaries and ordinary words",
+    "transcript": "Take one of three options. Go to the next node. The rapid response depends on a candidate.",
+    "glossary": [],
+    "terms": []
+  },
+  {
+    "name": "Preserve personal casing",
+    "transcript": "node js and node js",
+    "glossary": [
+      "node.js"
+    ],
+    "terms": [
+      "node.js"
+    ]
+  },
+  {
+    "name": "Protected code is not vocabulary",
+    "transcript": "Keep `three jay ess` and ```node js``` as is 🙂",
+    "glossary": [],
+    "terms": []
+  },
+  {
+    "name": "Case and Unicode boundaries",
+    "transcript": "THREE JAY ESS, api, апиключ, my_node_js, nottypescript.",
+    "glossary": [],
+    "terms": [
+      "three.js",
+      "API"
+    ]
+  },
+  {
+    "name": "ASR digit spelling and joined library names",
+    "transcript": "Try 3 js with nodejs.",
+    "glossary": [],
+    "terms": [
+      "three.js",
+      "Node.js"
+    ]
+  },
+  {
+    "name": "Bounded hint count in transcript order",
+    "transcript": "Python, Kotlin, Java, Lua, Luau, SQL, PostgreSQL, MySQL, SQLite, Redis, MongoDB, DynamoDB, Elasticsearch, ClickHouse, Kafka, RabbitMQ, GraphQL, gRPC, API, SDK, HTTP, HTTPS, WebSocket, TCP, UDP, DNS",
+    "glossary": [],
+    "terms": [
+      "Python",
+      "Kotlin",
+      "Java",
+      "Lua",
+      "Luau",
+      "SQL",
+      "PostgreSQL",
+      "MySQL",
+      "SQLite",
+      "Redis",
+      "MongoDB",
+      "DynamoDB",
+      "Elasticsearch",
+      "ClickHouse",
+      "Kafka",
+      "RabbitMQ",
+      "GraphQL",
+      "gRPC",
+      "API",
+      "SDK",
+      "HTTP",
+      "HTTPS",
+      "WebSocket",
+      "TCP"
+    ]
+  }
+]

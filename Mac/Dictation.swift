@@ -90,7 +90,7 @@ import AVFoundation
             try? keys.setRecord(prefs.shortcut)
             throw error
         }
-        if p.translation != prefs.translation || (p.translation.bundled && p.useMetal != prefs.useMetal) ||
+        if p.processText != prefs.processText || p.translation != prefs.translation || (p.translation.bundled && p.useMetal != prefs.useMetal) ||
             p.serverURL != prefs.serverURL || p.manageServer != prefs.manageServer || p.executable != prefs.executable ||
             p.gguf != prefs.gguf || p.model != prefs.model || p.contextSize != prefs.contextSize || p.gpuLayers != prefs.gpuLayers ||
             remove || !key.isEmpty { editor.stop() }
@@ -209,8 +209,8 @@ import AVFoundation
                     source = result; language = p.language; english = ""
                 }
                 guard !source.isEmpty else { Diagnostics.event("processing.finished", "No speech"); audio.removeAll(); status = "No speech detected."; return }
-                if p.translation != .transcript { status = "Writing English…" }
-                Diagnostics.event("editing.start", p.translation.rawValue)
+                if p.processText { status = "Writing English…" }
+                Diagnostics.event("editing.start", "\(p.translation.rawValue); processing=\(p.processing.rawValue)")
                 let editStart = ProcessInfo.processInfo.systemUptime
                 let text = try await editor.edit(source, p)
                 Diagnostics.timing("editing", since: editStart)

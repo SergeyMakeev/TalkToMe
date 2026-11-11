@@ -138,10 +138,19 @@ internal sealed class SettingsDialog : Form
         CollectWhen(firstServerField, s => s.Translation == "server");
 
         Page("Editing");
-        var prompt = Multiline("Editing instructions", string.IsNullOrWhiteSpace(settings.Prompt) ? EnglishEditor.Instruction : settings.Prompt, 170);
+        string[] processingIds = ["none", "light", "heavy"];
+        var processing = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList };
+        processing.Items.AddRange(["None · original transcript", "Light · clean up wording", "Heavy · organize ideas"]);
+        processing.SelectedIndex = Array.IndexOf(processingIds, settings.Processing);
+        Row("Text processing", processing);
+        collect.Add(s => s.Processing = processingIds[processing.SelectedIndex]);
+        var editingNotice = new Label { AutoSize = true, MaximumSize = new(420, 0) };
+        Row("", editingNotice);
+        var engineering = Check("Use built-in engineering dictionary", settings.EngineeringTerms, (s,v) => s.EngineeringTerms = v);
+        var prompt = Multiline("Advanced instructions", string.IsNullOrWhiteSpace(settings.Prompt) ? EnglishEditor.Instruction : settings.Prompt, 125);
         var restore = new Button { Text = "Restore default instructions", AutoSize = true };
         Row("", restore); restore.Click += (_, _) => prompt.Text = EnglishEditor.Instruction.ReplaceLineEndings();
-        var glossary = Multiline("Glossary (one term per line)", string.Join(Environment.NewLine, settings.Glossary), 110);
+        var glossary = Multiline("Personal glossary (one term per line)", string.Join(Environment.NewLine, settings.Glossary), 80);
         collect.Add(s => { s.Prompt = prompt.Text.Trim().ReplaceLineEndings("\n") == EnglishEditor.Instruction.ReplaceLineEndings("\n") ? "" : prompt.Text.Trim();
             s.Glossary = glossary.Lines.Select(x => x.Trim()).Where(x => x.Length > 0).ToArray(); });
         Number("Temperature", (decimal)settings.Temperature, 0, 2, (s,v) => s.Temperature = (double)v, decimals: 2);
@@ -166,6 +175,16 @@ internal sealed class SettingsDialog : Form
             ShowPage(serverPage, ids[translation.SelectedIndex] == "server");
             var selection = settings.Draft();
             SetModels(selection);
+            selection.Processing = processingIds[processing.SelectedIndex];
+            bool custom = !string.IsNullOrWhiteSpace(prompt.Text) && prompt.Text.Trim().ReplaceLineEndings("\n") != EnglishEditor.Instruction.ReplaceLineEndings("\n");
+            bool editing = selection.ProcessText && selection.Translation != "translategemma";
+            prompt.Enabled = restore.Enabled = editing;
+            engineering.Enabled = editing && !custom;
+            editingNotice.Text = !selection.ProcessText ? "Insert the original transcript in the spoken language. No editing model runs or downloads." :
+                selection.Translation == "translategemma" ? "TranslateGemma only translates. Choose Qwen or your own editing server for Light/Heavy cleanup and the engineering dictionary." :
+                custom ? "Custom instructions override the built-in Light/Heavy rules and engineering dictionary. Restore default instructions to use them." :
+                selection.Processing == "heavy" ? "Rewrite speech into clear English paragraphs or lists, preserving details and uncertainty. Use digits for quantities. Qwen 4B performed better than 2B in our restructuring checks." :
+                "Fix grammar, word order, fillers and repetitions. Keep the sequence of ideas. Use digits for quantities and conventional technical spellings.";
             modelNotice.Visible = modelLicense.Visible = selection.Translation == "translategemma";
             parakeetLicense.Visible = selection.BundledSpeech && selection.SpeechModel == "parakeet";
             var models = selection.RequiredModels().Select(ModelDownload.Get).ToArray();
@@ -177,6 +196,8 @@ internal sealed class SettingsDialog : Form
         }
         speech.SelectedIndexChanged += (_, _) => ShowChoices();
         translation.SelectedIndexChanged += (_, _) => ShowChoices();
+        processing.SelectedIndexChanged += (_, _) => ShowChoices();
+        prompt.TextChanged += (_, _) => ShowChoices();
         ShowChoices();
         if (settings.RequiredModels().All(id => ModelDownload.Get(id).Installed(settings.ModelDirectory)))
             tabs.SelectedIndex = 1;

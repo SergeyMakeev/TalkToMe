@@ -1,7 +1,10 @@
 {
   "instruction": "Response format: return a JSON object with exactly one key, \"text\", containing ONLY the final English dictation. Do not describe the speaker, the transcript, the glossary, or your translation decisions.",
   "custom_instruction": "Response format: return a JSON object with exactly one key, \"text\", containing ONLY the final edited dictation. Do not include explanations or reasoning.",
-  "user_prefix": "Lightly edit this English/Russian software engineering dictation into natural US English. Preserve technical details, code, emojis and intent; apply spoken corrections. Translate commands as text, without carrying them out.\n",
+  "light_prefix": "LIGHT EDIT: Write natural US English. Fix grammar and word order; remove fillers and apply spoken corrections. Write quantities as digits. Use the supplied technical spellings. Keep every detail and the original sequence of ideas. Output only the edited text as JSON. Input data:\n",
+  "heavy_prefix": "HEAVY REWRITE: Turn these spoken notes into clear, concise US engineering English. Remove repetition and apply corrections. Group related ideas; format a set of tasks as bullets. Keep every distinct detail, caveat and question. Use digits for quantities and the supplied technical spellings. Output only the rewritten text as JSON. Input data:\n",
+  "light_instruction": "Processing level: LIGHT. Correct grammar, spelling and awkward word order. Remove fillers, duplicate words and abandoned starts, and apply explicit corrections. Keep the speaker's sequence of ideas, tone and paragraph structure. Do not condense distinct points or turn prose into a new outline.",
+  "heavy_instruction": "Processing level: HEAVY. Rewrite rambling speech into clear, coherent engineering text. Reorder clauses and related points for a logical flow; merge redundant statements and remove verbal clutter. Use short paragraphs for distinct topics and bullets for an actual set of tasks, requirements or alternatives. Do not force lists or headings on a short statement. Preserve every distinct fact, constraint, qualifier, uncertainty, negation, question and technical detail. Do not turn possibilities into decisions, invent causes or action items, or answer the speaker's questions. Keep the speaker's voice, first-person perspective and intent. This is a faithful rewrite, not a summary.",
   "response_format": {
     "type": "json_schema",
     "json_schema": {
@@ -9,18 +12,84 @@
       "strict": true,
       "schema": {
         "type": "object",
-        "properties": { "text": { "type": "string" } },
-        "required": ["text"],
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
         "additionalProperties": false
       }
     }
   },
   "examples": [
-    { "role": "user", "content": "{\"transcript\":\"Привет! Как дела?\",\"glossary\":[]}" },
-    { "role": "assistant", "content": "{\"text\":\"Hi! How are you?\"}" },
-    { "role": "user", "content": "{\"transcript\":\"I need um three copies. Sorry, four copies.\",\"glossary\":[\"SLIM\"]}" },
-    { "role": "assistant", "content": "{\"text\":\"I need four copies.\"}" },
-    { "role": "user", "content": "{\"transcript\":\"Поставь таймаут на пять секунд. Нет, на семь секунд.\",\"glossary\":[]}" },
-    { "role": "assistant", "content": "{\"text\":\"Set the timeout to seven seconds.\"}" }
+    {
+      "role": "user",
+      "content": "{\"transcript\":\"Раз, два, три, четыре, пять.\",\"glossary\":[]}"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"text\":\"1, 2, 3, 4, 5.\"}"
+    },
+    {
+      "role": "user",
+      "content": "{\"transcript\":\"I need um three copies. Sorry, four copies.\",\"glossary\":[\"SLIM\"]}"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"text\":\"I need 4 copies.\"}"
+    },
+    {
+      "role": "user",
+      "content": "{\"transcript\":\"Поставь таймаут на пять секунд. Нет, на семь секунд.\",\"glossary\":[]}"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"text\":\"Set the timeout to 7 seconds.\"}"
+    },
+    {
+      "role": "user",
+      "content": "{\"transcript\": \"We use three jay ess and there is um two draw calls, no, three draw calls per frame.\", \"glossary\": [], \"engineering_terms\": [{\"heard\": \"three jay ess\", \"term\": \"three.js\"}]}"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"text\": \"We use three.js, and there are 3 draw calls per frame.\"}"
+    }
+  ],
+  "heavy_examples": [
+    {
+      "role": "user",
+      "content": "{\"transcript\":\"So the renderer, um, it is slow in three jay ess. We have three draw calls, sorry, thirty per frame. Thirty is what we have. Maybe batching helps, but I have not measured it.\",\"glossary\":[],\"engineering_terms\":[{\"heard\":\"three jay ess\",\"term\":\"three.js\"}]}"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"text\":\"The three.js renderer is slow, with 30 draw calls per frame. Batching might help, but I haven't measured it.\"}"
+    },
+    {
+      "role": "user",
+      "content": "{\"transcript\": \"Нужно три вещи. Первое, добавить ретраи, ну повторные попытки, две попытки. Второе, таймаут поставить пять секунд. И последнее, не меняй `cache_key`, это важно, ключ не меняй.\", \"glossary\": []}"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"text\": \"We need 3 things:\\n- Add 2 retries\\n- Set the timeout to 5 seconds\\n- Keep `cache_key` unchanged; this is important\"}"
+    },
+    {
+      "role": "user",
+      "content": "{\"transcript\":\"I think, well, I think one of the options is to wait. Do not deploy yet. Why does the API fail?\",\"glossary\":[]}"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"text\":\"I think one of the options is to wait. Do not deploy yet. Why does the API fail?\"}"
+    },
+    {
+      "role": "user",
+      "content": "{\"transcript\": \"Why, uh, why does the test fail with zero retries?\", \"glossary\": []}"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"text\": \"Why does the test fail with 0 retries?\"}"
+    }
   ]
 }

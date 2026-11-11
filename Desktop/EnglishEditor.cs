@@ -12,14 +12,16 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
     private LocalServer server = new(config);
     internal int? ProcessId => server.ProcessId;
     private static readonly JsonSerializerOptions TranscriptJson = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
-    public Task PrepareAsync(CancellationToken token) => server.PrepareAsync(token);
+    public Task PrepareAsync(CancellationToken token) => config.ProcessText ? server.PrepareAsync(token) : Task.CompletedTask;
     private HttpClient http = CreateClient(config);
+    internal EnglishEditor(Settings config, HttpMessageHandler handler) : this(config)
+    { http.Dispose(); http = new HttpClient(handler); }
     private static HttpClient CreateClient(Settings s) => new(new HttpClientHandler { AllowAutoRedirect = false, UseProxy = !s.LocalTranslation })
         { Timeout = TimeSpan.FromSeconds(s.LocalTranslation ? Math.Max(300, s.TimeoutSeconds) : s.TimeoutSeconds) };
 
     public void Reconfigure(Settings next)
     {
-        if (next.Translation != config.Translation || next.UseGpu != config.UseGpu || next.LocalServer != config.LocalServer || next.ServerUrl != config.ServerUrl || next.Model != config.Model ||
+        if (next.ProcessText != config.ProcessText || next.Translation != config.Translation || next.UseGpu != config.UseGpu || next.LocalServer != config.LocalServer || next.ServerUrl != config.ServerUrl || next.Model != config.Model ||
             next.ProtectedApiKey != config.ProtectedApiKey || next.UseEnvironmentKey != config.UseEnvironmentKey)
         {
             server.Dispose();
@@ -43,19 +45,23 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
         return json.RootElement.Clone();
     }
 
-    internal static Dictionary<string, object> RequestBody(string transcript, Settings settings, string model)
+    internal static Dictionary<string, object> RequestBody(string transcript, Settings settings, string model, bool preserveQuestions = false)
     {
         if (settings.Translation == "translategemma") return TranslateGemma.Request(transcript, model);
         bool defaults = string.IsNullOrWhiteSpace(settings.Prompt);
         string instruction = defaults ? Instruction : settings.Prompt;
+        if (defaults) instruction += "\n" + LocalEditing.GetProperty(settings.Processing + "_instruction").GetString();
         if (settings.LocalTranslation) instruction += "\n" + LocalEditing.GetProperty(defaults ? "instruction" : "custom_instruction").GetString();
         var messages = new List<object> { new { role = "system", content = instruction } };
         // Tiny 0.8B tends to copy examples verbatim. Larger models benefit from them.
         if (settings.LocalTranslation && settings.Translation != "qwen08" && defaults)
-            messages.AddRange(LocalEditing.GetProperty("examples").EnumerateArray().Select(x => (object)x));
+            messages.AddRange(LocalEditing.GetProperty(settings.Processing == "heavy" ? "heavy_examples" : "examples").EnumerateArray().Select(x => (object)x));
         string protectedInput = defaults ? DictationStyle.Protect(transcript).Text : transcript;
-        string user = JsonSerializer.Serialize(new { glossary = settings.Glossary, transcript = protectedInput }, TranscriptJson);
-        if (settings.LocalTranslation && defaults) user = LocalEditing.GetProperty("user_prefix").GetString() + user;
+        var data = new Dictionary<string, object> { ["glossary"] = settings.Glossary, ["transcript"] = protectedInput };
+        if (defaults && settings.EngineeringTerms) data["engineering_terms"] = EngineeringVocabulary.Hints(protectedInput, settings.Glossary);
+        string user = JsonSerializer.Serialize(data, TranscriptJson);
+        if (settings.LocalTranslation && defaults) user = LocalEditing.GetProperty(settings.Processing + "_prefix").GetString() + user;
+        if (preserveQuestions) user = "Preserve the speaker's questions as questions ending in '?'. Do not turn them into statements or answer them.\n" + user;
         messages.Add(new { role = "user", content = user });
         var body = new Dictionary<string, object> {
             ["model"] = model, ["messages"] = messages,
@@ -76,8 +82,8 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
 
     public async Task<string> EditAsync(string transcript, CancellationToken token, ProcessingMetrics? metrics = null)
     {
+        if (!config.ProcessText) return transcript;
         if (string.IsNullOrWhiteSpace(transcript)) return "";
-        if (config.Translation == "transcript") return transcript;
         if (config.Translation == "translategemma" && !TranslateGemma.NeedsTranslation(transcript)) return transcript;
         try
         {
@@ -98,7 +104,18 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
 
     private async Task<string> RequestAsync(string transcript, CancellationToken token, ProcessingMetrics? metrics)
     {
-        if (config.Translation != "translategemma") return await RequestChunkAsync(transcript, token, metrics);
+        if (config.Translation != "translategemma")
+        {
+            string text = await RequestChunkAsync(transcript, token, metrics);
+            if (string.IsNullOrWhiteSpace(config.Prompt) && DictationStyle.MissingQuestion(transcript, text))
+            {
+                Diagnostics.Event("editing.retry", "Question preservation");
+                text = await RequestChunkAsync(transcript, token, metrics, preserveQuestions: true);
+                if (DictationStyle.MissingQuestion(transcript, text))
+                    throw new InvalidDataException("The editor removed a question. Retry processing or copy the source transcript.");
+            }
+            return text;
+        }
         var result = new System.Text.StringBuilder();
         foreach (var chunk in TranslateGemma.Chunks(transcript))
         {
@@ -110,7 +127,7 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
         return result.ToString().Trim();
     }
 
-    private async Task<string> RequestChunkAsync(string transcript, CancellationToken token, ProcessingMetrics? metrics)
+    private async Task<string> RequestChunkAsync(string transcript, CancellationToken token, ProcessingMetrics? metrics, bool preserveQuestions = false)
     {
         using (metrics?.Measure("translation_ready")) await PrepareAsync(token);
         using var inference = metrics?.Measure("translation_request");
@@ -120,7 +137,7 @@ internal sealed class EnglishEditor(Settings config) : IDisposable
         using var request = new HttpRequestMessage(HttpMethod.Post, server.Endpoint.AbsoluteUri.TrimEnd('/') + "/chat/completions");
         var key = server.Key;
         if (!string.IsNullOrWhiteSpace(key)) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
-        request.Content = JsonContent.Create(RequestBody(transcript, config, server.Model));
+        request.Content = JsonContent.Create(RequestBody(transcript, config, server.Model, preserveQuestions));
         using var response = await http.SendAsync(request, token);
         if (!response.IsSuccessStatusCode)
             throw new HttpRequestException($"llama-server returned HTTP {(int)response.StatusCode}. Check serverUrl, model, API key and context size.", null, response.StatusCode);

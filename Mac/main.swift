@@ -206,8 +206,18 @@ if args.count == 2 && args[1] == "--check-diagnostics" {
         do {
             var p = Preferences()
             p.translation = .server; p.serverURL = args[2]; p.model = "ci-model"; p.prompt = "CI instructions"; p.glossary = ["Metal"]
-            let result = try await EnglishEditor().edit("Проверка Metal", p)
+            let editor = EnglishEditor()
+            let result = try await editor.edit("Проверка Metal", p)
             guard result == "Check Metal." else { throw Failure("Unexpected editor response.") }
+            p.prompt = ""; p.glossary = []; p.processing = .heavy
+            guard try await editor.edit("Why did it fail?", p) == "Why did it fail?" else { throw Failure("Question retry did not repair the output.") }
+            do {
+                _ = try await editor.edit("Why did it fail?", p)
+                throw Failure("Lost question accepted after retry.")
+            } catch let error as Failure where error.localizedDescription.contains("removed a question") { }
+            p.processing = .none
+            guard try await editor.edit("  Why did it fail?  ", p) == "  Why did it fail?  " else { throw Failure("None did not bypass editing.") }
+            editor.close()
             exit(0)
         } catch { fputs("\(error.localizedDescription)\n", stderr); exit(1) }
     }
@@ -240,6 +250,7 @@ if args.count == 2 && args[1] == "--check-diagnostics" {
                   try KeyChord(draft.cancelShortcut) == KeyChord("Ctrl+Alt+Escape") else { throw Failure("Default talking shortcut failed.") }
             try Data(#"{"shortcut":"Ctrl + Numpad 0","cancelShortcut":"Control+Option+F10","review":false}"#.utf8).write(to: file)
             let migrated = try Preferences.load(from: file)
+            guard migrated.processing == .light, migrated.engineeringTerms else { throw Failure("Legacy processing defaults changed.") }
             guard migrated.shortcut == draft.shortcut, migrated.cancelShortcut == draft.cancelShortcut, !migrated.review else {
                 throw Failure("Legacy Mac shortcuts did not migrate or review mode changed.")
             }
@@ -249,6 +260,7 @@ if args.count == 2 && args[1] == "--check-diagnostics" {
             draft.shortcut = "Control+Option+F9"
             draft.cancelShortcut = "Control+Shift+Escape"
             draft.threads = 1; draft.review = true; draft.glossary = ["Metal"]; draft.prompt = "Edit lightly."
+            draft.processing = .heavy; draft.engineeringTerms = false
             try draft.save(to: file)
             guard try Preferences.load(from: file) == draft else { throw Failure("Preferences did not round trip.") }
             var keypad = draft
