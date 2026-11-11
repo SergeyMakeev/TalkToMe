@@ -1,8 +1,8 @@
 [
-  {"term": "three.js", "aliases": ["three.js", "three js", "three dot js", "three jay ess", "три джей эс", "три джи эс", "три дот джей эс"]},
-  {"term": "Node.js", "aliases": ["node.js", "node js", "node jay ess", "ноуд джей эс", "нод джей эс"]},
-  {"term": "Next.js", "aliases": ["next.js", "next js", "next jay ess", "некст джей эс"]},
-  {"term": "Vue.js", "aliases": ["vue.js", "vue js", "view js", "вью джей эс"]},
+  {"term": "three.js", "aliases": ["three.js", "three js", "three dot js", "three jay ess", "три джей эс", "три джи эс", "три дот джей эс", "threejs", "3 js", "3.js", "3js"]},
+  {"term": "Node.js", "aliases": ["node.js", "node js", "node jay ess", "ноуд джей эс", "нод джей эс", "Nodejs"]},
+  {"term": "Next.js", "aliases": ["next.js", "next js", "next jay ess", "некст джей эс", "Nextjs"]},
+  {"term": "Vue.js", "aliases": ["vue.js", "vue js", "view js", "вью джей эс", "Vuejs"]},
   {"term": "Nuxt", "aliases": ["nuxt", "нукст"]},
   {"term": "React", "aliases": ["react", "реакт"]},
   {"term": "React Native", "aliases": ["react native", "реакт нейтив"]},
